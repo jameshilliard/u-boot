@@ -9,7 +9,7 @@
  * LABBE Corentin & Chen-Yu Tsai for Linux, THANKS!
  *
 */
-
+#define DEBUG
 #include <cpu_func.h>
 #include <log.h>
 #include <asm/cache.h>
@@ -156,6 +156,7 @@ struct emac_eth_dev {
 	u32 rx_currdescnum;
 	u32 addr;
 	u32 tx_slot;
+	u32 reset_delays[3];
 	bool use_internal_phy;
 
 	const struct emac_variant *variant;
@@ -180,8 +181,7 @@ struct sun8i_eth_pdata {
 
 static int sun8i_mdio_read(struct mii_dev *bus, int addr, int devad, int reg)
 {
-	struct udevice *dev = bus->priv;
-	struct emac_eth_dev *priv = dev_get_priv(dev);
+	struct emac_eth_dev *priv = bus->priv;
 	u32 mii_cmd;
 	int ret;
 
@@ -214,8 +214,7 @@ static int sun8i_mdio_read(struct mii_dev *bus, int addr, int devad, int reg)
 static int sun8i_mdio_write(struct mii_dev *bus, int addr, int devad, int reg,
 			    u16 val)
 {
-	struct udevice *dev = bus->priv;
-	struct emac_eth_dev *priv = dev_get_priv(dev);
+	struct emac_eth_dev *priv = bus->priv;
 	u32 mii_cmd;
 
 	mii_cmd = (reg << MDIO_CMD_MII_PHY_REG_ADDR_SHIFT) &
@@ -615,9 +614,7 @@ err_tx_clk:
 
 static int sun8i_mdio_reset(struct mii_dev *bus)
 {
-	struct udevice *dev = bus->priv;
-	struct emac_eth_dev *priv = dev_get_priv(dev);
-	struct sun8i_eth_pdata *pdata = dev_get_plat(dev);
+	struct emac_eth_dev *priv = bus->priv;
 	int ret;
 
 	if (!dm_gpio_is_valid(&priv->reset_gpio))
@@ -628,39 +625,39 @@ static int sun8i_mdio_reset(struct mii_dev *bus)
 	if (ret)
 		return ret;
 
-	udelay(pdata->reset_delays[0]);
+	udelay(priv->reset_delays[0]);
 
 	ret = dm_gpio_set_value(&priv->reset_gpio, 1);
 	if (ret)
 		return ret;
 
-	udelay(pdata->reset_delays[1]);
+	udelay(priv->reset_delays[1]);
 
 	ret = dm_gpio_set_value(&priv->reset_gpio, 0);
 	if (ret)
 		return ret;
 
-	udelay(pdata->reset_delays[2]);
+	udelay(priv->reset_delays[2]);
 
 	return 0;
 }
 
-static int sun8i_mdio_init(const char *name, struct udevice *priv)
+static int sun8i_mdio_init(const char *name, struct emac_eth_dev *priv)
 {
-	struct mii_dev *bus = mdio_alloc();
+	priv->bus = mdio_alloc();
 
-	if (!bus) {
+	if (!priv->bus) {
 		debug("Failed to allocate MDIO bus\n");
 		return -ENOMEM;
 	}
 
-	bus->read = sun8i_mdio_read;
-	bus->write = sun8i_mdio_write;
-	snprintf(bus->name, sizeof(bus->name), name);
-	bus->priv = (void *)priv;
-	bus->reset = sun8i_mdio_reset;
+	priv->bus->read = sun8i_mdio_read;
+	priv->bus->write = sun8i_mdio_write;
+	snprintf(priv->bus->name, sizeof(priv->bus->name), name);
+	priv->bus->priv = (void *)priv;
+	priv->bus->reset = sun8i_mdio_reset;
 
-	return  mdio_register(bus);
+	return  mdio_register(priv->bus);
 }
 
 static int sun8i_eth_free_pkt(struct udevice *dev, uchar *packet,
@@ -717,8 +714,15 @@ static int sun8i_emac_eth_probe(struct udevice *dev)
 	if (priv->phy_reg)
 		regulator_set_enable(priv->phy_reg, true);
 
-	sun8i_mdio_init(dev->name, dev);
 	priv->bus = miiphy_get_dev_by_name(dev->name);
+	if (!priv->bus) {
+		ret = sun8i_mdio_init(dev->name, priv);
+		if (ret)
+			return ret;
+		priv->bus = miiphy_get_dev_by_name(dev->name);
+		if (!priv->bus)
+			return -ENODEV;
+	}
 
 	return sun8i_phy_init(priv, dev);
 }
@@ -762,6 +766,29 @@ static int sun8i_handle_internal_phy(struct udevice *dev, struct emac_eth_dev *p
 	}
 
 	priv->use_internal_phy = true;
+
+	return 0;
+}
+
+static int sun8i_handle_phy_clk(struct udevice *dev, struct emac_eth_dev *priv)
+{
+	struct ofnode_phandle_args phandle;
+	int ret;
+
+	ret = ofnode_parse_phandle_with_args(dev_ofnode(dev), "phy-handle",
+					     NULL, 0, 0, &phandle);
+	if (ret)
+		return ret;
+
+	if (!ofnode_device_is_compatible(phandle.node,
+					 "ethernet-phy-ieee802.3-c22"))
+		return 0;
+
+	// ret = clk_get_by_index_nodev(phandle.node, 0, &priv->ephy_clk);
+	// if (ret && ret != -ENOENT) {
+	// 	dev_err(dev, "failed to get PHY clock\n");
+	// 	return ret;
+	// }
 
 	return 0;
 }
@@ -843,6 +870,10 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		ret = sun8i_handle_internal_phy(dev, priv);
 		if (ret)
 			return ret;
+	} else {
+		ret = sun8i_handle_phy_clk(dev, priv);
+		if (ret)
+			return ret;
 	}
 
 	priv->interface = pdata->phy_interface;
@@ -870,6 +901,8 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		ret = fdtdec_get_int_array(gd->fdt_blob, dev_of_offset(dev),
 					   "snps,reset-delays-us",
 					   sun8i_pdata->reset_delays, 3);
+		memcpy(priv->reset_delays, sun8i_pdata->reset_delays,
+		       sizeof(priv->reset_delays));
 	} else if (ret == -ENOENT) {
 		ret = 0;
 	}
@@ -906,6 +939,11 @@ static const struct emac_variant emac_variant_h6 = {
 	.support_rmii		= true,
 };
 
+static const struct emac_variant emac_variant_h616_1 = {
+	.syscon_offset		= 0x34,
+	.support_rmii		= true,
+};
+
 static const struct udevice_id sun8i_emac_eth_ids[] = {
 	{ .compatible = "allwinner,sun8i-a83t-emac",
 	  .data = (ulong)&emac_variant_a83t },
@@ -919,6 +957,8 @@ static const struct udevice_id sun8i_emac_eth_ids[] = {
 	  .data = (ulong)&emac_variant_a64 },
 	{ .compatible = "allwinner,sun50i-h6-emac",
 	  .data = (ulong)&emac_variant_h6 },
+	{ .compatible = "allwinner,sun50i-h616-emac",
+	  .data = (ulong)&emac_variant_h616_1 },
 	{ }
 };
 
