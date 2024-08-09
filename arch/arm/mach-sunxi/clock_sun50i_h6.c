@@ -10,6 +10,8 @@ void clock_init_safe(void)
 		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
 	struct sunxi_prcm_reg *const prcm =
 		(struct sunxi_prcm_reg *)SUNXI_PRCM_BASE;
+	struct sunxi_pwm_reg *const pwm =
+		(struct sunxi_pwm_reg *)SUNXI_PWM_BASE;
 
 	if (IS_ENABLED(CONFIG_MACH_SUN50I_H616)) {
 		/* this seems to enable PLLs on H616 */
@@ -50,6 +52,12 @@ void clock_init_safe(void)
 	 * DRAM initialization code.
 	 */
 	writel(MBUS_CLK_SRC_PLL6X2 | MBUS_CLK_M(3), &ccm->mbus_cfg);
+
+	/* add for pwm ephy */
+	writel(CCU_PWM_RST | CCU_PWM_GATING, &ccm->pwm_gate_reset);
+	writel(PWM_CLK_GATING | PWM_CLK_BYPASS, &pwm->pwm_ch[5].ppr);
+	writel(PWM45_CLK_GATING | PWM5_CLK_BYPASS, &pwm->pccr45);
+	writel(PWM_CH5_ENABLE, &pwm->per);
 }
 
 void clock_init_uart(void)
@@ -103,6 +111,7 @@ void clock_set_pll1(unsigned int clk)
 	val |= CCM_CPU_AXI_MUX_PLL_CPUX;
 	writel(val, &ccm->cpu_axi_cfg);
 }
+#endif /* CONFIG_XPL_BUILD */
 
 int clock_twi_onoff(int port, int state)
 {
@@ -131,7 +140,6 @@ int clock_twi_onoff(int port, int state)
 
 	return 0;
 }
-#endif /* CONFIG_XPL_BUILD */
 
 /* PLL_PERIPH0 clock, used by the MMC driver */
 unsigned int clock_get_pll6(void)

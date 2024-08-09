@@ -9,7 +9,7 @@
  * LABBE Corentin & Chen-Yu Tsai for Linux, THANKS!
  *
 */
-
+#define DEBUG
 #include <cpu_func.h>
 #include <log.h>
 #include <asm/cache.h>
@@ -766,6 +766,29 @@ static int sun8i_handle_internal_phy(struct udevice *dev, struct emac_eth_dev *p
 	return 0;
 }
 
+static int sun8i_handle_phy_clk(struct udevice *dev, struct emac_eth_dev *priv)
+{
+	struct ofnode_phandle_args phandle;
+	int ret;
+
+	ret = ofnode_parse_phandle_with_args(dev_ofnode(dev), "phy-handle",
+					     NULL, 0, 0, &phandle);
+	if (ret)
+		return ret;
+
+	if (!ofnode_device_is_compatible(phandle.node,
+					 "ethernet-phy-ieee802.3-c22"))
+		return 0;
+
+	// ret = clk_get_by_index_nodev(phandle.node, 0, &priv->ephy_clk);
+	// if (ret && ret != -ENOENT) {
+	// 	dev_err(dev, "failed to get PHY clock\n");
+	// 	return ret;
+	// }
+
+	return 0;
+}
+
 static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 {
 	struct sun8i_eth_pdata *sun8i_pdata = dev_get_plat(dev);
@@ -843,6 +866,10 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		ret = sun8i_handle_internal_phy(dev, priv);
 		if (ret)
 			return ret;
+	} else {
+		ret = sun8i_handle_phy_clk(dev, priv);
+		if (ret)
+			return ret;
 	}
 
 	priv->interface = pdata->phy_interface;
@@ -906,6 +933,11 @@ static const struct emac_variant emac_variant_h6 = {
 	.support_rmii		= true,
 };
 
+static const struct emac_variant emac_variant_h616_1 = {
+	.syscon_offset		= 0x34,
+	.support_rmii		= true,
+};
+
 static const struct udevice_id sun8i_emac_eth_ids[] = {
 	{ .compatible = "allwinner,sun8i-a83t-emac",
 	  .data = (ulong)&emac_variant_a83t },
@@ -919,6 +951,8 @@ static const struct udevice_id sun8i_emac_eth_ids[] = {
 	  .data = (ulong)&emac_variant_a64 },
 	{ .compatible = "allwinner,sun50i-h6-emac",
 	  .data = (ulong)&emac_variant_h6 },
+	{ .compatible = "allwinner,sun50i-h616-emac",
+	  .data = (ulong)&emac_variant_h616_1 },
 	{ }
 };
 

@@ -226,6 +226,36 @@ struct sunxi_ccm_reg {
 	u32 pll_lock_dbg_ctrl;	/* 0xf04 PLL lock debugging control */
 };
 
+struct sunxi_pwm_reg {
+	u32 pier;		/* 0x000 PWM IRQ Enable Register */
+	u32 pisr;		/* 0x004 PWM IRQ Status Register */
+	u8 reserved_0x008[8];
+	u32 cier;		/* 0x010 Capture IRQ Enable Register */
+	u32 cisr;		/* 0x014 Capture IRQ Status Register */
+	u8 reserved_0x018[8];
+	u32 pccr01;		/* 0x020 PWM01 Clock Configuration Register */
+	u32 pccr23;		/* 0x024 PWM23 Clock Configuration Register */
+	u32 pccr45;		/* 0x028 PWM45 Clock Configuration Register */
+	u32 pccr67;		/* 0x02c PWM67 Clock Configuration Register */
+	u32 pdzcr01;		/* 0x030 PWM01 Dead Zone Control Register */
+	u32 pdzcr23;		/* 0x034 PWM23 Dead Zone Control Register */
+	u32 pdzcr45;		/* 0x038 PWM45 Dead Zone Control Register */
+	u32 pdzcr67;		/* 0x03c PWM67 Dead Zone Control Register */
+	u32 per;		/* 0x040 PWM Enable Register */
+	u32 cer;		/* 0x044 Capture Enable Register */
+	u8 reserved_0x048[24];
+
+	struct {
+		u32 pcr;	/* PWM Control Register */
+		u32 ppr;	/* PWM Period Register */
+		u32 pcntr;	/* PWM Count Register */
+		u32 ccr;	/* Capture Control Register */
+		u32 crlr;	/* Capture Rise Lock Register */
+		u32 cflr;	/* Capture Fall Lock Register */
+		u8 reserved[8];
+	} pwm_ch[8];
+};
+
 /* pll1 bit field */
 #define CCM_PLL1_CTRL_EN		BIT(31)
 #define CCM_PLL1_LDO_EN			BIT(30)
@@ -265,6 +295,21 @@ struct sunxi_ccm_reg {
 #define CCM_CPU_AXI_APB_MASK		0x300
 #define CCM_CPU_AXI_AXI_MASK		0x3
 #define CCM_CPU_AXI_DEFAULT_FACTORS	0x301
+
+/* pwm_gate_reset bit field */
+#define CCU_PWM_RST			BIT(16)
+#define CCU_PWM_GATING			BIT(0)
+
+/* pwm_ch ppr bit field */
+#define PWM_CLK_GATING			BIT(19)
+#define PWM_CLK_BYPASS			BIT(2)
+
+/* pccr45 bit field */
+#define PWM45_CLK_GATING		BIT(4)
+#define PWM5_CLK_BYPASS			BIT(6)
+
+/* pwm per bit field */
+#define PWM_CH5_ENABLE			BIT(5)
 
 #ifdef CONFIG_MACH_SUN50I_H6				/* H6 */
 

@@ -43,6 +43,8 @@ static struct ccu_clk_gate h616_gates[] = {
 	[CLK_SPI0]		= GATE(0x940, BIT(31)),
 	[CLK_SPI1]		= GATE(0x944, BIT(31)),
 
+	[CLK_EMAC_25M]		= GATE(0x970, BIT(31) | BIT(30)),
+
 	[CLK_BUS_SPI0]		= GATE(0x96c, BIT(0)),
 	[CLK_BUS_SPI1]		= GATE(0x96c, BIT(1)),
 
