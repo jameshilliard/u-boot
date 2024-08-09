@@ -50,6 +50,12 @@ void clock_init_safe(void)
 	 * DRAM initialization code.
 	 */
 	writel(MBUS_CLK_SRC_PLL6X2 | MBUS_CLK_M(3), &ccm->mbus_cfg);
+
+	/* add for pwm ephy */
+	writel(0x10001, 0x030017ac);
+	writel(0x80004, 0x0300a104);
+	writel(0x50, 0x0300a028);
+	writel(0x20, 0x0300a040);
 }
 
 void clock_init_uart(void)
@@ -103,6 +109,7 @@ void clock_set_pll1(unsigned int clk)
 	val |= CCM_CPU_AXI_MUX_PLL_CPUX;
 	writel(val, &ccm->cpu_axi_cfg);
 }
+#endif /* CONFIG_XPL_BUILD */
 
 int clock_twi_onoff(int port, int state)
 {
@@ -131,7 +138,6 @@ int clock_twi_onoff(int port, int state)
 
 	return 0;
 }
-#endif /* CONFIG_XPL_BUILD */
 
 /* PLL_PERIPH0 clock, used by the MMC driver */
 unsigned int clock_get_pll6(void)
