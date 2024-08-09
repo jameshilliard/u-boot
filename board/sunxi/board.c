@@ -109,6 +109,17 @@ void i2c_init_board(void)
 #endif
 #endif
 
+#ifdef CONFIG_I2C3_ENABLE
+#if defined(CONFIG_MACH_SUN50I_H616)
+	sunxi_gpio_set_cfgpin(SUNXI_GPA(10), 2);
+	sunxi_gpio_set_cfgpin(SUNXI_GPA(11), 2);
+	sunxi_gpio_set_cfgpin(SUNXI_GPA(12), 2);
+	sunxi_gpio_set_pull(SUNXI_GPA(10), SUNXI_GPIO_PULL_UP);
+	sunxi_gpio_set_pull(SUNXI_GPA(11), SUNXI_GPIO_PULL_UP);
+	clock_twi_onoff(3, 1);
+#endif
+#endif
+
 #ifdef CONFIG_R_I2C_ENABLE
 #ifdef CONFIG_MACH_SUN50I
 	clock_twi_onoff(5, 1);
@@ -229,6 +240,14 @@ int board_init(void)
 	ret = axp_gpio_init();
 	if (ret)
 		return ret;
+
+#if CONFIG_IS_ENABLED(DM_I2C)
+	/*
+	 * Temporary workaround for enabling I2C clocks until proper sunxi DM
+	 * clk, reset and pinctrl drivers land.
+	 */
+	i2c_init_board();
+#endif
 
 	eth_init_board();
 
@@ -552,9 +571,13 @@ static void sunxi_spl_store_dram_size(phys_addr_t dram_size)
 	spl->dram_size = dram_size >> 20;
 }
 
+#define sunxi_ac300_key (1<<8)
+
 void sunxi_board_init(void)
 {
 	int power_failed = 0;
+	u8 data[2];
+	int val;
 
 #ifdef CONFIG_LED_STATUS
 	if (IS_ENABLED(CONFIG_SPL_DRIVERS_MISC))
@@ -649,8 +672,31 @@ void sunxi_board_init(void)
 	 */
 	if (!power_failed)
 		clock_set_pll1(get_board_sys_clk());
-	else
-		printf("Failed to set core voltage! Can't set CPU frequency\n");
+	else {
+		clock_set_pll1(792000000);
+		printf("Failed to set core voltage!   set CPU 792000000hz frequency\n");
+	}
+
+	val=readl(0x300622c);
+	if((val&sunxi_ac300_key)==0)
+	{
+		i2c_set_bus_num(1);
+		data[0] = 0;
+		data[1] = 0;
+		i2c_write(0x10, 0xfe, 1, data, 2);
+		i2c_write(0x10, 2, 1, data, 2);
+		data[1] = 1;
+		i2c_write(0x10, 2, 1, data, 2);
+		data[1] = 0xf;
+		i2c_write(0x10, 0x16, 1, data, 2);
+		data[1] = 3;
+		i2c_write(0x10, 0x14, 1, data, 2);
+		data[1] = 0x60;
+		i2c_write(0x10, 0xfe, 1, data, 2);
+		data[0] = 0x08;
+		data[1] = 0x14;
+		i2c_write(0x10, 0, 1, data, 2);
+	}
 }
 #endif /* CONFIG_XPL_BUILD */
 

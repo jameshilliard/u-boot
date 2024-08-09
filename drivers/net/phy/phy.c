@@ -7,6 +7,7 @@
  *
  * Based loosely off of Linux's PHY Lib
  */
+#define DEBUG
 #include <console.h>
 #include <dm.h>
 #include <env.h>
@@ -16,6 +17,7 @@
 #include <command.h>
 #include <miiphy.h>
 #include <phy.h>
+#include <asm/io.h>
 #include <errno.h>
 #include <asm/global_data.h>
 #include <asm-generic/gpio.h>
@@ -388,10 +390,120 @@ int genphy_parse_link(struct phy_device *phydev)
 	return 0;
 }
 
+#define AC300_DEV 0x10
+static void ac300_ephy_enable(struct phy_device *phydev)
+{
+	struct mii_dev *bus = phydev->bus;
+	/* Follow BSP initialization sequence exactly */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x1f83);	/* release reset */
+	mdelay(10);
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x1fb7);	/* clk gating */
+	mdelay(10);
+
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x05, 0xa81f);	/* enable io */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x06, 0x0000);	/* clear config */
+
+	mdelay(1000);	/* Critical: 1 second delay for stabilization */
+}
+
+static void disable_intelligent_ieee(struct phy_device *phydev)
+{
+	unsigned int value;
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/* switch to page 1 */
+	value = phy_read(phydev, MDIO_DEVAD_NONE, 0x17);	/* read address 0 0x17 register */
+	value &= ~(1 << 3);					/* reg 0x17 bit 3, set 0 to disable IEEE */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x17, value);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0000);	/* switch to page 0 */
+}
+
+static void disable_802_3az_ieee(struct phy_device *phydev)
+{
+	unsigned int value;
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x7);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, 0x3c);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x1 << 14 | 0x7);
+	value = phy_read(phydev, MDIO_DEVAD_NONE, 0xe);
+	value &= ~(0x1 << 1);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x7);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, 0x3c);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x1 << 14 | 0x7);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, value);
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/* switch to page 2 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);
+}
+
+static void ephy_config_default(struct phy_device *phydev)
+{
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/* Switch to Page 1 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x12, 0x4824);	/* Disable APS */
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/* Switch to Page 2 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);	/* PHYAFE TRX optimization */
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0600);	/* Switch to Page 6 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x14, 0x708b);	/* PHYAFE TX optimization */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x13, 0xF000);	/* PHYAFE RX optimization */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x15, 0x1530);
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0800);	/* Switch to Page 6 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x00bc);	/* PHYAFE TRX optimization */
+}
+
+static void __maybe_unused ephy_config_fixed(struct phy_device *phydev)
+{
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/* switch to Page 1 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x12, 0x4824);	/* Disable APS */
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/* switch to Page 2 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);	/* PHYAFE TRX optimization */
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0600);	/* switch to Page 6 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x14, 0x7809);	/* PHYAFE TX optimization */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x13, 0xf000);	/* PHYAFE RX optimization */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x10, 0x5523);
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x15, 0x3533);
+
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0800);	/* switch to Page 8 */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x1d, 0x0844);	/* disable auto offset */
+	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x00bc);	/* PHYAFE TRX optimization */
+}
+
+static void __maybe_unused ephy_config_cali(struct phy_device *phydev, u16 ephy_cali)
+{
+	struct mii_dev *bus = phydev->bus;
+	int value;
+	/* Apply calibration to AC300 register 0x06 (BSP only applies here) */
+	value = bus->read(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x06);
+	value &= ~(0x0F << 12);
+	value |= (0x0F & (0x03 + (ephy_cali & 0xFF))) << 12;
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x06, value);
+}
+
+static void ac300_config_rmii(struct phy_device *phydev)
+{
+	struct mii_dev *bus = phydev->bus;
+	int value;
+
+	/* Configure RMII mode and LED on AC300 register 0x06 (BSP logic) */
+	value = bus->read(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x06);
+	if (phydev->interface == PHY_INTERFACE_MODE_RMII)
+		value |= (1 << 11);
+	else
+		value &= ~(1 << 11);
+	value |= (1 << 1);  /* LED polarity */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x06, value);
+}
+
+#define sunxi_ac300_key (1<<8)
+
 int genphy_config(struct phy_device *phydev)
 {
 	int val;
 	u32 features;
+	u16 ephy_cali;
 
 	features = (SUPPORTED_TP | SUPPORTED_MII
 			| SUPPORTED_AUI | SUPPORTED_FIBRE |
@@ -436,6 +548,44 @@ int genphy_config(struct phy_device *phydev)
 
 	genphy_config_aneg(phydev);
 
+	val = readl(0x300622c);
+	ephy_cali = val & 0xffff;
+	if(val & sunxi_ac300_key)
+	{
+		ac300_ephy_enable(phydev);
+
+		/* Apply calibration to AC300 only (like BSP does) */
+		ephy_config_cali(phydev, ephy_cali);
+
+		/*
+		 * BIT9: the flag of calibration value
+		 * 0: Normal
+		 * 1: Low level of calibration value
+		 */
+		if(ephy_cali & 0x200) {
+			printf("ac300:ephy cali efuse read: fixed!\n");
+			ephy_config_fixed(phydev);
+		}
+		else {
+			printf("ac300:ephy cali efuse read: default!\n");
+			ephy_config_default(phydev);
+		}
+
+		disable_intelligent_ieee(phydev);			/* Disable Intelligent IEEE */
+		disable_802_3az_ieee(phydev);				/* Disable 802.3az IEEE */
+		phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0000);	/* Switch to Page 0 */
+
+		/* Configure RMII mode and LED on AC300 */
+		ac300_config_rmii(phydev);
+	}
+	else {
+		printf("ac200:ephy cali efuse read: default!\n");
+		ephy_config_default(phydev);
+
+		disable_intelligent_ieee(phydev);			/* Disable Intelligent IEEE */
+		disable_802_3az_ieee(phydev);				/* Disable 802.3az IEEE */
+		phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0000);	/* Switch to Page 0 */
+	}
 	return 0;
 }
 

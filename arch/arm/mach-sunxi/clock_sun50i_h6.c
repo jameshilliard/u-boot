@@ -15,6 +15,7 @@ void clock_init_safe(void)
 {
 	void *const ccm = (void *)SUNXI_CCM_BASE;
 	void *const prcm = (void *)SUNXI_PRCM_BASE;
+	void *const pwm = (void *)SUNXI_PWM_BASE;
 
 	if (IS_ENABLED(CONFIG_MACH_SUN50I_H616))
 		setbits_le32(prcm + CCU_PRCM_SYS_PWROFF_GATING, 0x10);
@@ -72,6 +73,12 @@ void clock_init_safe(void)
 		writel(MBUS_CLK_SRC_PLL6X2 | MBUS_CLK_M(3),
 		       ccm + CCU_H6_MBUS_CFG);
 	}
+
+	/* add for pwm ephy */
+	writel(CCU_PWM_RST | CCU_PWM_GATING, ccm + CCU_H6_PWM_GATE_RESET);
+	writel(PWM_CLK_GATING | PWM_CLK_BYPASS, pwm + PWM_CH5_PPR);
+	writel(PWM45_CLK_GATING | PWM5_CLK_BYPASS, pwm + PWM_PWM45_CLK_CFG);
+	writel(PWM_CH5_ENABLE, pwm + PWM_PER);
 }
 
 void clock_init_uart(void)
@@ -190,6 +197,7 @@ static void clock_h6_set_cpu_pll(unsigned int n_factor)
 	val |= CCM_CPU_AXI_MUX_PLL_CPUX;
 	writel(val, ccm + CCU_H6_CPU_AXI_CFG);
 }
+#endif /* CONFIG_XPL_BUILD */
 
 void clock_set_pll1(unsigned int clk)
 {
@@ -230,7 +238,6 @@ int clock_twi_onoff(int port, int state)
 
 	return 0;
 }
-#endif /* CONFIG_XPL_BUILD */
 
 /* PLL_PERIPH0 clock, used by the MMC driver */
 unsigned int clock_get_pll6(void)
