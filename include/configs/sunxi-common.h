@@ -68,7 +68,7 @@
  * We cannot use expressions here, because expressions won't be evaluated in
  * autoconf.mk.
  */
-#ifdef CONFIG_ARM64
+#if 0
 /*
  * Boards seem to come with at least 512MB of DRAM.
  * The kernel should go at 512K, which is the default text offset (that will
@@ -142,7 +142,7 @@
 	"fdtoverlay_addr_r=" FDTOVERLAY_ADDR_R "\0" \
 	"ramdisk_addr_r=" RAMDISK_ADDR_R "\0"
 
-#ifdef CONFIG_ARM64
+#if 0
 #define MEM_LAYOUT_ENV_EXTRA_SETTINGS \
 	"kernel_comp_addr_r=" KERNEL_COMP_ADDR_R "\0" \
 	"kernel_comp_size=" KERNEL_COMP_SIZE "\0"
