@@ -155,8 +155,8 @@
 #define NFC_ECC_EN		BIT(0)
 #define NFC_ECC_PIPELINE	BIT(3)
 #define NFC_ECC_EXCEPTION	BIT(4)
-#define NFC_ECC_BLOCK_SIZE_MSK	BIT(5)
-#define NFC_ECC_BLOCK_512	(1 << 5)
+#define NFC_ECC_BLOCK_512(nfc)	(nfc->caps->has_ecc_block_512 ? BIT(5) : 0)
+#define NFC_ECC_BLOCK_SIZE_MSK(nfc) (nfc->caps->has_ecc_block_512 ? BIT(5) : 0)
 #define NFC_RANDOM_EN		BIT(9)
 #define NFC_RANDOM_DIRECTION	BIT(10)
 #define NFC_ECC_MODE_MSK	(0xf << 12)
@@ -269,6 +269,7 @@ struct sunxi_nand_chip {
  * NAND Controller capabilities structure: stores NAND controller capabilities
  * for distinction between compatible strings.
  *
+ * @has_ecc_block_512:	If the ECC can handle 512B or only 1024B chuncks
  * @nstrengths:		Number of element of ECC strengths array
  * @reg_ecc_err_cnt:	ECC error counter register
  * @reg_user_data:	User data register
@@ -276,6 +277,7 @@ struct sunxi_nand_chip {
  * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
  */
  struct sunxi_nfc_caps {
+	bool has_ecc_block_512;
 	unsigned int nstrengths;
 	unsigned int reg_ecc_err_cnt;
 	unsigned int reg_user_data;
@@ -812,11 +814,11 @@ static void sunxi_nfc_hw_ecc_enable(struct mtd_info *mtd)
 
 	ecc_ctl = readl(nfc->regs + NFC_REG_ECC_CTL);
 	ecc_ctl &= ~(NFC_ECC_MODE_MSK | NFC_ECC_PIPELINE |
-		     NFC_ECC_BLOCK_SIZE_MSK);
+		     NFC_ECC_BLOCK_SIZE_MSK(nfc));
 	ecc_ctl |= NFC_ECC_EN | NFC_ECC_MODE(data->mode) | NFC_ECC_EXCEPTION;
 
 	if (nand->ecc.size == 512)
-		ecc_ctl |= NFC_ECC_BLOCK_512;
+		ecc_ctl |= NFC_ECC_BLOCK_512(nfc);
 
 	writel(ecc_ctl, nfc->regs + NFC_REG_ECC_CTL);
 }
@@ -1867,6 +1869,7 @@ static int sunxi_nand_probe(struct udevice *dev)
 }
 
  static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
+	.has_ecc_block_512 = true,
 	.nstrengths = 9,
 	.reg_ecc_err_cnt = NFC_REG_A10_ECC_ERR_CNT,
 	.reg_user_data = NFC_REG_A10_USER_DATA,
