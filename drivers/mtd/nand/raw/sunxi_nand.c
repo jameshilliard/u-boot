@@ -157,8 +157,8 @@
 #define NFC_ECC_EXCEPTION	BIT(4)
 #define NFC_ECC_BLOCK_512(nfc)	(nfc->caps->has_ecc_block_512 ? BIT(5) : 0)
 #define NFC_ECC_BLOCK_SIZE_MSK(nfc) (nfc->caps->has_ecc_block_512 ? BIT(5) : 0)
-#define NFC_RANDOM_EN		BIT(9)
-#define NFC_RANDOM_DIRECTION	BIT(10)
+#define NFC_RANDOM_EN(nfc)	(nfc->caps->random_en_mask)
+#define NFC_RANDOM_DIRECTION(nfc) (nfc->caps->random_dir_mask)
 #define NFC_ECC_MODE_MSK(nfc)	(nfc->caps->ecc_mode_mask)
 #define NFC_ECC_MODE(nfc,x)	field_prep(NFC_ECC_MODE_MSK(nfc),(x))
 #define NFC_RANDOM_SEED_MSK	(0x7fff << 16)
@@ -276,6 +276,8 @@ struct sunxi_nand_chip {
  * @reg_pat_found:	Data Pattern Status Register
  * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
  * @ecc_mode_mask:	ECC_MODE mask in NFC_ECC_CTL register
+ * @random_en_mask:	RANDOM_EN mask in NFC_ECC_CTL register
+ * @random_dir_mask:	RANDOM_DIRECTION mask in NFC_ECC_CTL register
  */
  struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
@@ -285,6 +287,8 @@ struct sunxi_nand_chip {
 	unsigned int reg_pat_found;
 	unsigned int pat_found_mask;
 	unsigned int ecc_mode_mask;
+	unsigned int random_en_mask;
+	unsigned int random_dir_mask;
  };
 
 static inline struct sunxi_nand_chip *to_sunxi_nand(struct nand_chip *nand)
@@ -764,7 +768,7 @@ static void sunxi_nfc_randomizer_enable(struct mtd_info *mtd)
 	if (!(nand->options & NAND_NEED_SCRAMBLING))
 		return;
 
-	writel(readl(nfc->regs + NFC_REG_ECC_CTL) | NFC_RANDOM_EN,
+	writel(readl(nfc->regs + NFC_REG_ECC_CTL) | NFC_RANDOM_EN(nfc),
 	       nfc->regs + NFC_REG_ECC_CTL);
 }
 
@@ -776,7 +780,7 @@ static void sunxi_nfc_randomizer_disable(struct mtd_info *mtd)
 	if (!(nand->options & NAND_NEED_SCRAMBLING))
 		return;
 
-	writel(readl(nfc->regs + NFC_REG_ECC_CTL) & ~NFC_RANDOM_EN,
+	writel(readl(nfc->regs + NFC_REG_ECC_CTL) & ~NFC_RANDOM_EN(nfc),
 	       nfc->regs + NFC_REG_ECC_CTL);
 }
 
@@ -1879,6 +1883,8 @@ static int sunxi_nand_probe(struct udevice *dev)
 	.reg_pat_found = NFC_REG_ECC_ST,
 	.pat_found_mask = GENMASK(31, 16),
 	.ecc_mode_mask = GENMASK(15, 12),
+	.random_en_mask = BIT(9),
+	.random_dir_mask = BIT(10),
  };
 
 static const struct udevice_id sunxi_nand_ids[] = {
