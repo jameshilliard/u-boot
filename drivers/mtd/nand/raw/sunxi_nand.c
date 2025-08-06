@@ -159,8 +159,8 @@
 #define NFC_ECC_BLOCK_SIZE_MSK(nfc) (nfc->caps->has_ecc_block_512 ? BIT(5) : 0)
 #define NFC_RANDOM_EN		BIT(9)
 #define NFC_RANDOM_DIRECTION	BIT(10)
-#define NFC_ECC_MODE_MSK	(0xf << 12)
-#define NFC_ECC_MODE(x)		((x) << 12)
+#define NFC_ECC_MODE_MSK(nfc)	(nfc->caps->ecc_mode_mask)
+#define NFC_ECC_MODE(nfc,x)	field_prep(NFC_ECC_MODE_MSK(nfc),(x))
 #define NFC_RANDOM_SEED_MSK	(0x7fff << 16)
 #define NFC_RANDOM_SEED(x)	((x) << 16)
 
@@ -275,6 +275,7 @@ struct sunxi_nand_chip {
  * @reg_user_data:	User data register
  * @reg_pat_found:	Data Pattern Status Register
  * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
+ * @ecc_mode_mask:	ECC_MODE mask in NFC_ECC_CTL register
  */
  struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
@@ -283,6 +284,7 @@ struct sunxi_nand_chip {
 	unsigned int reg_user_data;
 	unsigned int reg_pat_found;
 	unsigned int pat_found_mask;
+	unsigned int ecc_mode_mask;
  };
 
 static inline struct sunxi_nand_chip *to_sunxi_nand(struct nand_chip *nand)
@@ -813,9 +815,10 @@ static void sunxi_nfc_hw_ecc_enable(struct mtd_info *mtd)
 	u32 ecc_ctl;
 
 	ecc_ctl = readl(nfc->regs + NFC_REG_ECC_CTL);
-	ecc_ctl &= ~(NFC_ECC_MODE_MSK | NFC_ECC_PIPELINE |
+	ecc_ctl &= ~(NFC_ECC_MODE_MSK(nfc) | NFC_ECC_PIPELINE |
 		     NFC_ECC_BLOCK_SIZE_MSK(nfc));
-	ecc_ctl |= NFC_ECC_EN | NFC_ECC_MODE(data->mode) | NFC_ECC_EXCEPTION;
+	ecc_ctl |= NFC_ECC_EN | NFC_ECC_MODE(nfc, data->mode) |
+		NFC_ECC_EXCEPTION;
 
 	if (nand->ecc.size == 512)
 		ecc_ctl |= NFC_ECC_BLOCK_512(nfc);
@@ -1875,6 +1878,7 @@ static int sunxi_nand_probe(struct udevice *dev)
 	.reg_user_data = NFC_REG_A10_USER_DATA,
 	.reg_pat_found = NFC_REG_ECC_ST,
 	.pat_found_mask = GENMASK(31, 16),
+	.ecc_mode_mask = GENMASK(15, 12),
  };
 
 static const struct udevice_id sunxi_nand_ids[] = {
