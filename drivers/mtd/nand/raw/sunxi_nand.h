@@ -167,4 +167,30 @@
 
 #define NFC_MAX_CS		7
 
+/*
+ * NAND Controller capabilities structure: stores NAND controller capabilities
+ * for distinction between compatible strings.
+ *
+ * @has_ecc_block_512:	If the ECC can handle 512B or only 1024B chuncks
+ * @nstrengths:		Number of element of ECC strengths array
+ * @reg_ecc_err_cnt:	ECC error counter register
+ * @reg_user_data:	User data register
+ * @reg_pat_found:	Data Pattern Status Register
+ * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
+ * @ecc_mode_mask:	ECC_MODE mask in NFC_ECC_CTL register
+ * @random_en_mask:	RANDOM_EN mask in NFC_ECC_CTL register
+ * @random_dir_mask:	RANDOM_DIRECTION mask in NFC_ECC_CTL register
+ */
+ struct sunxi_nfc_caps {
+	bool has_ecc_block_512;
+	unsigned int nstrengths;
+	unsigned int reg_ecc_err_cnt;
+	unsigned int reg_user_data;
+	unsigned int reg_pat_found;
+	unsigned int pat_found_mask;
+	unsigned int ecc_mode_mask;
+	unsigned int random_en_mask;
+	unsigned int random_dir_mask;
+ };
+
 #endif
