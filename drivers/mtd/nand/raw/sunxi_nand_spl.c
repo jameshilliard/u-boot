@@ -251,6 +251,17 @@ static int nand_change_column(u16 column)
 
 static const int ecc_bytes[] = {32, 46, 54, 60, 74, 88, 102, 110, 116};
 
+static void nand_readlcpy(u32 *dest, u32 * __iomem src, size_t len)
+{
+	if (len & 0x3)
+		printf("length should be multiple of 4 (32bits access), data will be incomplete.\n");
+
+	len >>= 2;
+
+	while (len--)
+		*dest++ = readl(src++);
+}
+
 static int nand_read_page(const struct nfc_config *conf, u32 offs,
 			  void *dest, int len)
 {
@@ -310,7 +321,8 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 			return 1;
 
 		/* Retrieve the data from SRAM */
-		memcpy_fromio(data, SUNXI_NFC_BASE + NFC_RAM0_BASE,
+		nand_readlcpy((u32*)data,
+			      (void *)(uintptr_t)SUNXI_NFC_BASE + NFC_RAM0_BASE,
 			      conf->ecc_size);
 
 		/* Stop the ECC engine */
