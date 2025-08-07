@@ -255,7 +255,7 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 			return 1;
 
 		/* Retrieve the data from SRAM */
-		memcpy_fromio(data, SUNXI_NFC_BASE + NFC_RAM0_BASE,
+		memcpy_fromio(data, (void *)SUNXI_NFC_BASE + NFC_RAM0_BASE,
 			      conf->ecc_size);
 
 		/* Stop the ECC engine */
