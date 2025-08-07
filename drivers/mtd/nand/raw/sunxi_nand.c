@@ -65,10 +65,13 @@
 #define NFC_REG_IO_DATA		0x0030
 #define NFC_REG_ECC_CTL		0x0034
 #define NFC_REG_ECC_ST		0x0038
-#define NFC_REG_DEBUG		0x003C
+#define NFC_REG_H6_PAT_FOUND	0x003C
+#define NFC_REG_A10_DEBUG	0x003C
 #define NFC_REG_A10_ECC_ERR_CNT	0x0040
+#define NFC_REG_H6_ECC_ERR_CNT	0x0050
 #define NFC_REG_ECC_ERR_CNT(x)	((nfc->caps->reg_ecc_err_cnt + (x)) & ~0x3)
 #define NFC_REG_A10_USER_DATA	0x0050
+#define NFC_REG_H6_USER_DATA	0x0080
 #define NFC_REG_USER_DATA(x)	(nfc->caps->reg_user_data + ((x) * 4))
 #define NFC_REG_SPARE_AREA	0x00A0
 #define NFC_REG_PAT_ID		0x00A4
@@ -1445,7 +1448,9 @@ static int sunxi_nand_chip_init_timings(struct sunxi_nfc *nfc,
 static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 					      struct nand_ecc_ctrl *ecc)
 {
-	static const u8 strengths[] = { 16, 24, 28, 32, 40, 48, 56, 60, 64 };
+	static const u8 strengths[] = {
+		16, 24, 28, 32, 40, 48, 56, 60, 64, 68, 72, 76, 80
+	};
 	struct nand_chip *nand = mtd_to_nand(mtd);
 	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
 	struct sunxi_nfc *nfc = to_sunxi_nfc(sunxi_nand->nand.controller);
@@ -1898,10 +1903,25 @@ static int sunxi_nand_probe(struct udevice *dev)
 	.random_dir_mask = BIT(10),
  };
 
+ static const struct sunxi_nfc_caps sunxi_nfc_h6_caps = {
+	.nstrengths = 13,
+	.reg_ecc_err_cnt = NFC_REG_H6_ECC_ERR_CNT,
+	.reg_user_data = NFC_REG_H6_USER_DATA,
+	.reg_pat_found = NFC_REG_H6_PAT_FOUND,
+	.pat_found_mask = GENMASK(31, 0),
+	.ecc_mode_mask = GENMASK(15, 8),
+	.random_en_mask = BIT(5),
+	.random_dir_mask = BIT(6),
+ };
+
 static const struct udevice_id sunxi_nand_ids[] = {
 	{
 		.compatible = "allwinner,sun4i-a10-nand",
 		.data = (unsigned long)&sunxi_nfc_a10_caps,
+	},
+	{
+		.compatible = "allwinner,sun50i-h616-nand-controller",
+		.data = (unsigned long)&sunxi_nfc_h6_caps,
 	},
 	{ }
 };
