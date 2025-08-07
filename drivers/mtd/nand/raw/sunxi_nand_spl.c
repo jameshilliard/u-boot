@@ -492,15 +492,28 @@ unsigned int nand_page_size(void)
 
 void nand_deselect(void)
 {
+#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
+	void * const ccm = (void *)SUNXI_CCM_BASE;
+	void * const nand0_clk_cfg = ccm + CCU_NAND0_CLK_CFG;
+#else
 	struct sunxi_ccm_reg *const ccm =
 		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
+	u32 nand0_clk_cfg = &ccm->nand0_clk_cfg;
+#endif
 
+#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
+	setbits_le32(ccm + CCU_H6_NAND_GATE_RESET,
+		     (CLK_GATE_OPEN << GATE_SHIFT));
+	setbits_le32(ccm + CCU_H6_MBUS_GATE,
+		     (CLK_GATE_OPEN << MBUS_GATE_OFFSET_NAND));
+#else
 	clrbits_le32(&ccm->ahb_gate0, (CLK_GATE_OPEN << AHB_GATE_OFFSET_NAND0));
 #ifdef CONFIG_MACH_SUN9I
 	clrbits_le32(&ccm->ahb_gate1, (1 << AHB_GATE_OFFSET_DMA));
 #else
 	clrbits_le32(&ccm->ahb_gate0, (1 << AHB_GATE_OFFSET_DMA));
 #endif
-	clrbits_le32(&ccm->nand0_clk_cfg, CCM_NAND_CTRL_ENABLE | \
+#endif
+	clrbits_le32(nand0_clk_cfg, CCM_NAND_CTRL_ENABLE | \
 		     CCM_NAND_CTRL_N(0) | CCM_NAND_CTRL_M(1));
 }
