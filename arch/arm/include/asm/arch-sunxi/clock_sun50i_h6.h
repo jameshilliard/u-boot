@@ -24,6 +24,7 @@
 #define CCU_H6_APB2_CFG			0x524
 #define CCU_H6_MBUS_CFG			0x540
 #define CCU_H6_DRAM_CLK_CFG		0x800
+#define CCU_H6_MBUS_GATE		0x804
 #define CCU_H6_DRAM_GATE_RESET		0x80c
 #define CCU_NAND0_CLK_CFG		0x810
 #define CCU_NAND1_CLK_CFG		0x814
@@ -148,6 +149,16 @@
 /* Module gate/reset shift*/
 #define RESET_SHIFT			(16)
 #define GATE_SHIFT			(0)
+
+/* MBUS gate offsets */
+#define MBUS_GATE_OFFSET_DI		11
+#define MBUS_GATE_OFFSET_G2D		10
+#define MBUS_GATE_OFFSET_CSI		8
+#define MBUS_GATE_OFFSET_NAND		5
+#define MBUS_GATE_OFFSET_TS0		3
+#define MBUS_GATE_OFFSET_VE		2
+#define MBUS_GATE_OFFSET_CE		1
+#define MBUS_GATE_OFFSET_DMA		0
 
 /* DRAM clock bit field */
 #define DRAM_CLK_ENABLE			BIT(31)
