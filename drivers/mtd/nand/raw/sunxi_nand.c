@@ -356,6 +356,7 @@ static void sunxi_nfc_set_clk_rate(unsigned long hz)
 	/* gate on nand clock */
 #if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
 	setbits_le32(ccm + CCU_H6_NAND_GATE_RESET, (1 << GATE_SHIFT));
+	setbits_le32(ccm + CCU_H6_MBUS_GATE, (1 << MBUS_GATE_OFFSET_NAND));
 #else
 	setbits_le32(&ccm->ahb_gate0, (1 << AHB_GATE_OFFSET_NAND0));
 #ifdef CONFIG_MACH_SUN9I
