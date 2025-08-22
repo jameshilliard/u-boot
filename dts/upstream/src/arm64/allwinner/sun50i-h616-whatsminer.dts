@@ -229,8 +229,8 @@
 		 * This nand requires only 8 bits per 512b
 		 * but if we can correct more, let's do it
 		 */
-		nand-ecc-strength = <8>;
-		nand-ecc-step-size = <512>;
+		nand-ecc-strength = <32>;
+		nand-ecc-step-size = <1024>;
 		nand-ecc-maximize;
 	};
 };
