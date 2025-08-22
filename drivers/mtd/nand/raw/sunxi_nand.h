@@ -52,6 +52,14 @@
 #define NFC_REG_A10_USER_DATA	0x0050
 #define NFC_REG_H6_USER_DATA	0x0080
 #define NFC_REG_USER_DATA(x)	(nfc->caps->reg_user_data + ((x) * 4))
+#define NFC_REG_H616_USER_DATA_LEN 0x0070
+
+/* A USER_DATA_LEN register can hold the length of 8 USER_DATA registers */
+#define NFC_REG_USER_DATA_LEN_CAPACITY 8
+#define NFC_REG_USER_DATA_LEN(nfc,step) \
+	(nfc->caps->reg_user_data_len ? \
+	 nfc->caps->reg_user_data_len + \
+	 ((step) / NFC_REG_USER_DATA_LEN_CAPACITY) * 4 : 0)
 #define NFC_REG_SPARE_AREA	0x00A0
 #define NFC_REG_PAT_ID		0x00A4
 #define NFC_RAM0_BASE		0x0400
@@ -161,6 +169,9 @@
 
 #define NFC_ECC_ERR_CNT(b, x)	(((x) >> ((b) * 8)) & 0xff)
 
+#define NFC_USER_DATA_LEN_MSK(step) \
+	(0xf << (((step) % NFC_REG_USER_DATA_LEN_CAPACITY) * 4))
+
 #define NFC_DEFAULT_TIMEOUT_MS	1000
 
 #define NFC_SRAM_SIZE		1024
@@ -175,22 +186,27 @@
  * @nstrengths:		Number of element of ECC strengths array
  * @reg_ecc_err_cnt:	ECC error counter register
  * @reg_user_data:	User data register
+ * @reg_user_data_len:	User data length register
  * @reg_pat_found:	Data Pattern Status Register
  * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
  * @ecc_mode_mask:	ECC_MODE mask in NFC_ECC_CTL register
  * @random_en_mask:	RANDOM_EN mask in NFC_ECC_CTL register
  * @random_dir_mask:	RANDOM_DIRECTION mask in NFC_ECC_CTL register
+ * @max_ecc_steps:	Maximum supported steps for ECC, this is also the
+ *			number of user data registers
  */
  struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
 	unsigned int nstrengths;
 	unsigned int reg_ecc_err_cnt;
 	unsigned int reg_user_data;
+	unsigned int reg_user_data_len;
 	unsigned int reg_pat_found;
 	unsigned int pat_found_mask;
 	unsigned int ecc_mode_mask;
 	unsigned int random_en_mask;
 	unsigned int random_dir_mask;
+	unsigned int max_ecc_steps;
  };
 
 #endif
