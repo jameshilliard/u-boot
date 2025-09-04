@@ -196,6 +196,61 @@ static int nand_change_column(u16 column)
 
 static const int ecc_bytes[] = {32, 46, 54, 60, 74, 88, 102, 110, 116};
 
+#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
+/*
+ * On H6/H616 the user_data lenght has to be set in specific registers
+ * before writing.
+ */
+static void sunxi_nfc_reset_user_data_len(struct nfc_config *nfc)
+{
+	int loop_step = NFC_REG_USER_DATA_LEN_CAPACITY;
+
+	/* not all SoCs have this register */
+	if (!NFC_REG_USER_DATA_LEN(nfc, 0))
+		return;
+
+	for (int i = 0; i < nfc->caps->max_ecc_steps; i += loop_step)
+		writel(0, SUNXI_NFC_BASE + NFC_REG_USER_DATA_LEN(nfc, i));
+}
+
+static void sunxi_nfc_set_user_data_len(struct nfc_config *nfc,
+					int len, int step)
+{
+	/*
+	 * The table index is the value to set in NFC_USER_DATA_LEN registers
+	 * and the corresponding value is the number of bytes to write
+	 */
+	static const u8 sunxi_user_data_len[] = {
+		0, 4, 8, 12, 16, 20, 24, 28, 32
+	};
+	bool found = false;
+	u32 val;
+	int i;
+
+	/* not all SoCs have this register */
+	if (!NFC_REG_USER_DATA_LEN(nfc, 0))
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(sunxi_user_data_len); i++) {
+		if (len == sunxi_user_data_len[i]) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found) {
+		printf("Unsupported length for user data reg: %d\n", len);
+		return;
+	}
+
+	val = readl(SUNXI_NFC_BASE + NFC_REG_USER_DATA_LEN(nfc, step));
+
+	val &= ~NFC_USER_DATA_LEN_MSK(step);
+	val |= field_prep(NFC_USER_DATA_LEN_MSK(step), i);
+	writel(val, SUNXI_NFC_BASE + NFC_REG_USER_DATA_LEN(nfc, step));
+}
+#endif
+
 static int nand_read_page(const struct nfc_config *conf, u32 offs,
 			  void *dest, int len)
 {
@@ -228,6 +283,10 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		       NFC_ECC_EN | NFC_ECC_EXCEPTION,
 		       SUNXI_NFC_BASE + NFC_REG_ECC_CTL);
 
+#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
+	sunxi_nfc_reset_user_data_len(conf);
+	sunxi_nfc_set_user_data_len(conf, 4, 0);
+#endif
 		/* Move the data in SRAM */
 		nand_change_column(data_off);
 		writel(conf->ecc_size, SUNXI_NFC_BASE + NFC_REG_CNT);
