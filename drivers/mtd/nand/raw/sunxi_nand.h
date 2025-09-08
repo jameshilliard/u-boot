@@ -184,6 +184,7 @@
  *
  * @has_ecc_block_512:	If the ECC can handle 512B or only 1024B chuncks
  * @nstrengths:		Number of element of ECC strengths array
+ * @ecc_strengths:	available ECC strengths array
  * @reg_ecc_err_cnt:	ECC error counter register
  * @reg_user_data:	User data register
  * @reg_user_data_len:	User data length register
@@ -198,6 +199,7 @@
  struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
 	unsigned int nstrengths;
+	const u8 *ecc_strengths;
 	unsigned int reg_ecc_err_cnt;
 	unsigned int reg_user_data;
 	unsigned int reg_user_data_len;

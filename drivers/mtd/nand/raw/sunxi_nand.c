@@ -1346,9 +1346,6 @@ static int sunxi_nand_chip_init_timings(struct sunxi_nfc *nfc,
 static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 					      struct nand_ecc_ctrl *ecc)
 {
-	static const u8 strengths[] = {
-		16, 24, 28, 32, 40, 48, 56, 60, 64, 68, 72, 76, 80
-	};
 	struct nand_chip *nand = mtd_to_nand(mtd);
 	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
 	struct sunxi_nfc *nfc = to_sunxi_nfc(sunxi_nand->nand.controller);
@@ -1375,12 +1372,12 @@ static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 
 	/* Add ECC info retrieval from DT */
 	for (i = 0; i < nfc->caps->nstrengths; i++) {
-		if (ecc->strength <= strengths[i]) {
+		if (ecc->strength <= nfc->caps->ecc_strengths[i]) {
 			/*
 			 * Update ecc->strength value with the actual strength
 			 * that will be used by the ECC engine.
 			 */
-			ecc->strength = strengths[i];
+			ecc->strength = nfc->caps->ecc_strengths[i];
 			break;
 		}
 	}
@@ -1792,9 +1789,17 @@ static int sunxi_nand_probe(struct udevice *dev)
 	return 0;
 }
 
+static const u8 sunxi_ecc_strengths_a10[] = {
+	16, 24, 28, 32, 40, 48, 56, 60, 64
+};
+static const u8 sunxi_ecc_strengths_h6[] = {
+	16, 24, 28, 32, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80
+};
+
  static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
 	.has_ecc_block_512 = true,
-	.nstrengths = 9,
+	.nstrengths = ARRAY_SIZE(sunxi_ecc_strengths_a10),
+	.ecc_strengths = sunxi_ecc_strengths_a10,
 	.reg_ecc_err_cnt = NFC_REG_A10_ECC_ERR_CNT,
 	.reg_user_data = NFC_REG_A10_USER_DATA,
 	.reg_pat_found = NFC_REG_ECC_ST,
@@ -1806,7 +1811,8 @@ static int sunxi_nand_probe(struct udevice *dev)
  };
 
  static const struct sunxi_nfc_caps sunxi_nfc_h6_caps = {
-	.nstrengths = 13,
+	.nstrengths = ARRAY_SIZE(sunxi_ecc_strengths_h6),
+	.ecc_strengths = sunxi_ecc_strengths_h6,
 	.reg_ecc_err_cnt = NFC_REG_H6_ECC_ERR_CNT,
 	.reg_user_data = NFC_REG_H6_USER_DATA,
 	.reg_user_data_len = NFC_REG_H616_USER_DATA_LEN,
