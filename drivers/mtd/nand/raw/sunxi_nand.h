@@ -52,7 +52,7 @@
 #define NFC_REG_A10_USER_DATA	0x0050
 #define NFC_REG_H6_USER_DATA	0x0080
 #define NFC_REG_USER_DATA(x)	(nfc->caps->reg_user_data + ((x) * 4))
-#define NFC_REG_H616_USER_DATA_LEN 0x0070
+#define NFC_REG_H6_USER_DATA_LEN 0x0070
 
 /* A USER_DATA_LEN register can hold the length of 8 USER_DATA registers */
 #define NFC_REG_USER_DATA_LEN_CAPACITY 8
