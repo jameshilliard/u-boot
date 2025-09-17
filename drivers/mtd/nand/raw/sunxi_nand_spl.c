@@ -194,8 +194,6 @@ static int nand_change_column(u16 column)
 	return 0;
 }
 
-static const int ecc_bytes[] = {32, 46, 54, 60, 74, 88, 102, 110, 116};
-
 #if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
 /*
  * On H6/H616 the user_data lenght has to be set in specific registers
@@ -249,6 +247,16 @@ static void sunxi_nfc_set_user_data_len(struct nfc_config *nfc,
 	val |= field_prep(NFC_USER_DATA_LEN_MSK(step), i);
 	writel(val, SUNXI_NFC_BASE + NFC_REG_USER_DATA_LEN(nfc, step));
 }
+
+static const int ecc_bytes[] = {
+	32, 46, 54, 60, 74, 82, 88, 96, 102, 110, 116, 124, 130, 138, 144
+};
+
+#else
+
+static const int ecc_bytes[] = {
+	32, 46, 54, 60, 74, 88, 102, 110, 116
+};
 #endif
 
 static int nand_read_page(const struct nfc_config *conf, u32 offs,
