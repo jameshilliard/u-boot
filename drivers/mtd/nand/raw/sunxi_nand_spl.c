@@ -206,7 +206,6 @@ static int nand_change_column(u16 column)
 	return 0;
 }
 
-#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
 /*
  * On H6/H616 the user_data lenght has to be set in specific registers
  * before writing.
@@ -260,12 +259,11 @@ static void sunxi_nfc_set_user_data_len(struct nfc_config *nfc,
 	writel(val, SUNXI_NFC_BASE + NFC_REG_USER_DATA_LEN(nfc, step));
 }
 
+#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
 static const int ecc_bytes[] = {
 	32, 46, 54, 60, 74, 82, 88, 96, 102, 110, 116, 124, 130, 138, 144
 };
-
 #else
-
 static const int ecc_bytes[] = {
 	32, 46, 54, 60, 74, 88, 102, 110, 116
 };
@@ -305,10 +303,6 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		       NFC_ECC_EN | NFC_ECC_EXCEPTION,
 		       SUNXI_NFC_BASE + NFC_REG_ECC_CTL);
 
-#if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
-	sunxi_nfc_reset_user_data_len(conf);
-	sunxi_nfc_set_user_data_len(conf, 4, 0);
-#endif
 		/* Move the data in SRAM */
 		nand_change_column(data_off);
 		writel(conf->ecc_size, SUNXI_NFC_BASE + NFC_REG_CNT);
@@ -319,8 +313,10 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		 * the data.
 		 */
 		nand_change_column(oob_off);
-		nand_exec_cmd(NFC_DATA_TRANS | NFC_ECC_OP);
+		sunxi_nfc_reset_user_data_len(conf);
+		sunxi_nfc_set_user_data_len(conf, 4, 0);
 
+		nand_exec_cmd(NFC_DATA_TRANS | NFC_ECC_OP);
 		/* Get the ECC status */
 		ecc_st = readl(SUNXI_NFC_BASE + NFC_REG_ECC_ST);
 
