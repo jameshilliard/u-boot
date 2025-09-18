@@ -317,8 +317,11 @@ static void nand_clock_setup(void)
 #endif
 
 #if defined (CONFIG_MACH_SUN50I_H616) || defined (CONFIG_MACH_SUN50I_H6)
-	setbits_le32(ccm + CCU_H6_NAND_GATE_RESET, (1 << GATE_SHIFT));
+	setbits_le32(ccm + CCU_H6_NAND_GATE_RESET,
+		     (1 << GATE_SHIFT) | (1 << RESET_SHIFT));
 	setbits_le32(ccm + CCU_H6_MBUS_GATE, (1 << MBUS_GATE_OFFSET_NAND));
+	setbits_le32(ccm + CCU_NAND1_CLK_CFG, CCM_NAND_CTRL_ENABLE | \
+		     CCM_NAND_CTRL_N(0) | CCM_NAND_CTRL_M(1));
 #else
 	setbits_le32(&ccm->ahb_gate0, (CLK_GATE_OPEN << AHB_GATE_OFFSET_NAND0));
 #if defined CONFIG_MACH_SUN6I || defined CONFIG_MACH_SUN8I || \
