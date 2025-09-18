@@ -53,12 +53,19 @@ const uint16_t random_seed[128] = {
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
 	.has_ecc_block_512 = true,
 	.reg_spare_area = NFC_REG_A10_SPARE_AREA,
+	.reg_pat_found = NFC_REG_ECC_ST,
+	.pat_found_mask = GENMASK(31, 16),
+	.ecc_err_mask = GENMASK(15, 0),
 	.random_en_mask = BIT(9),
  };
 
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_h6_caps = {
+	.has_ecc_block_512 = false,
 	.reg_user_data_len = NFC_REG_H6_USER_DATA_LEN,
 	.reg_spare_area = NFC_REG_H6_SPARE_AREA,
+	.reg_pat_found = NFC_REG_H6_PAT_FOUND,
+	.pat_found_mask = GENMASK(31, 0),
+	.ecc_err_mask = GENMASK(31, 0),
 	.random_en_mask = BIT(5),
  };
 
@@ -269,7 +276,7 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 	u16 rand_seed = 0;
 	int oob_chunk_sz = ecc_bytes[conf->ecc_strength];
 	int page = offs / conf->page_size;
-	u32 ecc_st;
+	u32 ecc_st, pattern_found;
 	int i;
 
 	if (offs % conf->page_size || len % conf->ecc_size ||
@@ -314,15 +321,21 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		ecc_st = readl(SUNXI_NFC_BASE + NFC_REG_ECC_ST);
 
 		/* ECC error detected. */
-		if (ecc_st & 0xffff)
+		if (ecc_st & NFC_ECC_ERR_MSK(conf))
 			return -EIO;
 
 		/*
-		 * Return 1 if the first chunk is empty (needed for
-		 * configuration detection).
+		 * Return 1 if the first chunk is empty (all 00 or ff)
+		 * (needed for configuration detection).
 		 */
-		if (!i && (ecc_st & 0x10000))
-			return 1;
+		if (!i) {
+			pattern_found = readl(SUNXI_NFC_BASE +
+					      conf->caps->reg_pat_found);
+			pattern_found = field_get(NFC_ECC_PAT_FOUND_MSK(conf),
+						  pattern_found);
+			if (pattern_found & NFC_ECC_PAT_FOUND(0))
+				return 1;
+		}
 
 		/* Retrieve the data from SRAM */
 		memcpy_fromio(data, (void *)SUNXI_NFC_BASE + NFC_RAM0_BASE,
