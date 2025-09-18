@@ -56,6 +56,7 @@ __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
  };
 
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_h6_caps = {
+	.reg_user_data_len = NFC_REG_H6_USER_DATA_LEN,
 	.random_en_mask = BIT(5),
  };
 
