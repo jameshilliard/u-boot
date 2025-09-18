@@ -52,11 +52,13 @@ const uint16_t random_seed[128] = {
 
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
 	.has_ecc_block_512 = true,
+	.reg_spare_area = NFC_REG_A10_SPARE_AREA,
 	.random_en_mask = BIT(9),
  };
 
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_h6_caps = {
 	.reg_user_data_len = NFC_REG_H6_USER_DATA_LEN,
+	.reg_spare_area = NFC_REG_H6_SPARE_AREA,
 	.random_en_mask = BIT(5),
  };
 
@@ -154,7 +156,7 @@ static void nand_apply_config(const struct nfc_config *conf)
 	writel(val | NFC_PAGE_SIZE(conf->page_size),
 	       SUNXI_NFC_BASE + NFC_REG_CTL);
 	writel(conf->ecc_size, SUNXI_NFC_BASE + NFC_REG_CNT);
-	writel(conf->page_size, SUNXI_NFC_BASE + NFC_REG_SPARE_AREA);
+	writel(conf->page_size, SUNXI_NFC_BASE + NFC_REG_SPARE_AREA(conf));
 }
 
 static int nand_load_page(const struct nfc_config *conf, u32 offs)
