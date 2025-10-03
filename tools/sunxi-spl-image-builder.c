@@ -378,6 +378,11 @@ static int check_image_info(struct image_info *info)
 	}
 
 	if (info->h6) {
+		if (info->ecc_step_size != 1024) {
+			fprintf(stderr,
+				"H6 SoCs supports only 1024 bytes ECC step\n");
+			return -EINVAL;
+		}
 		valid_ecc_strengths = ecc_strengths_h6;
 		nstrengths = ARRAY_SIZE(ecc_strengths_h6);
 	} else {
