@@ -85,15 +85,20 @@ static void scramble(const struct image_info *info,
 	uint16_t state;
 	int i;
 
-	/* Boot0 is always scrambled no matter the command line option. */
-	if (info->boot0) {
+	/*
+	 * Bail out earlier if the user didn't ask for scrambling.
+	 * But Boot0 is always scrambled no matter the command line option.
+	 */
+	if (!info->boot0 && !info->scramble)
+		return;
+
+	/*
+	 * On H6, the BROM scrambler seed is no different than the default one
+	 */
+	if (info->boot0 && !info->h6) {
 		state = brom_scrambler_seeds[0];
 	} else {
 		unsigned seedmod = info->eraseblock_size / info->page_size;
-
-		/* Bail out earlier if the user didn't ask for scrambling. */
-		if (!info->scramble)
-			return;
 
 		if (seedmod > ARRAY_SIZE(default_scrambler_seeds))
 			seedmod = ARRAY_SIZE(default_scrambler_seeds);
