@@ -27,6 +27,7 @@ struct image_info {
 	int eraseblock_size;
 	int scramble;
 	int boot0;
+	int h6;
 	off_t offset;
 	const char *source;
 	const char *dest;
@@ -303,6 +304,7 @@ static void display_help(int status)
 		"-e <size>        --eraseblock=<size>  Erase block size\n"
 		"-b               --boot0              Build a boot0 image.\n"
 		"-s               --scramble           Scramble data\n"
+		"-6               --h6                 Build an image compatible with H6/H616 SoC\n"
 		"-a <offset>      --address=<offset>   Where the image will be programmed.\n"
 		"\n"
 		"Notes:\n"
@@ -312,6 +314,9 @@ static void display_help(int status)
 		"The NAND controller only supports the following ECC configs\n"
 		"  Valid ECC strengths: 16, 24, 28, 32, 40, 48, 56, 60 and 64\n"
 		"  Valid ECC step size: 512 and 1024\n"
+		"\n"
+		"On H6/H616, the only ECC step size supported is 1024, but more ECC\n"
+		"strengths are supported: 44, 52, 68, 72, 76, 80\n"
 		"\n"
 		"If you are building a boot0 image, you'll have specify extra options.\n"
 		"These options should be chosen based on the layouts described here:\n"
@@ -342,7 +347,12 @@ static void display_help(int status)
 
 static int check_image_info(struct image_info *info)
 {
-	static int valid_ecc_strengths[] = { 16, 24, 28, 32, 40, 48, 56, 60, 64 };
+	static int ecc_strengths_a10[] = { 16, 24, 28, 32, 40, 48, 56, 60, 64 };
+	static int ecc_strengths_h6[] = {
+		16, 24, 28, 32, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80
+	};
+	int *valid_ecc_strengths;
+	size_t nstrengths;
 	int eccbytes, eccsteps;
 	unsigned i;
 
@@ -367,12 +377,20 @@ static int check_image_info(struct image_info *info)
 		return -EINVAL;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(valid_ecc_strengths); i++) {
+	if (info->h6) {
+		valid_ecc_strengths = ecc_strengths_h6;
+		nstrengths = ARRAY_SIZE(ecc_strengths_h6);
+	} else {
+		valid_ecc_strengths = ecc_strengths_a10;
+		nstrengths = ARRAY_SIZE(ecc_strengths_a10);
+	}
+
+	for (i = 0; i < nstrengths; i++) {
 		if (valid_ecc_strengths[i] == info->ecc_strength)
 			break;
 	}
 
-	if (i == ARRAY_SIZE(valid_ecc_strengths)) {
+	if (i == nstrengths) {
 		fprintf(stderr, "Invalid ECC strength argument: %d\n",
 			info->ecc_strength);
 		return -EINVAL;
@@ -416,10 +434,11 @@ int main(int argc, char **argv)
 			{"boot0", no_argument, 0, 'b'},
 			{"scramble", no_argument, 0, 's'},
 			{"address", required_argument, 0, 'a'},
+			{"h6", no_argument, 0, '6'},
 			{0, 0, 0, 0},
 		};
 
-		int c = getopt_long(argc, argv, "c:p:o:u:e:ba:sh",
+		int c = getopt_long(argc, argv, "c:p:o:u:e:ba:sh6",
 				long_options, &option_index);
 		if (c == EOF)
 			break;
@@ -453,6 +472,9 @@ int main(int argc, char **argv)
 			break;
 		case 'a':
 			info.offset = strtoull(optarg, NULL, 0);
+			break;
+		case '6':
+			info.h6 = 1;
 			break;
 		case '?':
 			display_help(-1);
