@@ -28,6 +28,8 @@ struct image_info {
 	int scramble;
 	int boot0;
 	int h6;
+	int boot0_copies;
+	int pages_per_copy;
 	off_t offset;
 	const char *source;
 	const char *dest;
@@ -282,10 +284,16 @@ static void scramble(const struct image_info *info,
 	if (info->boot0 && !info->h6) {
 		state = brom_scrambler_seeds[0];
 	} else {
-		unsigned seedmod = info->eraseblock_size / info->page_size;
+		unsigned seedmod;
 
-		if (seedmod > ARRAY_SIZE(default_scrambler_seeds))
+		if (info->h6 && info->boot0) {
+			/* H6 boot0 uses all 128 seeds */
 			seedmod = ARRAY_SIZE(default_scrambler_seeds);
+		} else {
+			seedmod = info->eraseblock_size / info->page_size;
+			if (seedmod > ARRAY_SIZE(default_scrambler_seeds))
+				seedmod = ARRAY_SIZE(default_scrambler_seeds);
+		}
 
 		state = default_scrambler_seeds[page % seedmod];
 	}
@@ -342,10 +350,16 @@ static void scramble_oob(const struct image_info *info,
 	if (info->boot0 && !info->h6) {
 		state = brom_scrambler_seeds[0];
 	} else {
-		unsigned seedmod = info->eraseblock_size / info->page_size;
+		unsigned seedmod;
 
-		if (seedmod > ARRAY_SIZE(default_scrambler_seeds))
+		if (info->h6 && info->boot0) {
+			/* H6 boot0 uses all 128 seeds */
 			seedmod = ARRAY_SIZE(default_scrambler_seeds);
+		} else {
+			seedmod = info->eraseblock_size / info->page_size;
+			if (seedmod > ARRAY_SIZE(default_scrambler_seeds))
+				seedmod = ARRAY_SIZE(default_scrambler_seeds);
+		}
 
 		state = default_scrambler_seeds[page % seedmod];
 	}
@@ -476,15 +490,15 @@ static int write_page(const struct image_info *info, uint8_t *buffer,
 			buffer[info->ecc_step_size + 2] = 3;
 			buffer[info->ecc_step_size + 3] = 1;
 
-			swap_bits(buffer, info->ecc_step_size);
+			swap_bits(buffer, info->ecc_step_size + 4);
 
-			encode_bch(bch, buffer, info->ecc_step_size, ecc);
+			encode_bch(bch, buffer, info->ecc_step_size + 4, ecc);
 
 			for (int j=0; j <  4 + eccbytes; j++)
 				printf("%02x ", buffer[info->ecc_step_size + j]);
 			printf("\n");
 
-			swap_bits(buffer, info->ecc_step_size);
+			swap_bits(buffer, info->ecc_step_size + 4);
 			swap_bits(ecc, eccbytes);
 
 			for (int j=0; j <  4 + eccbytes; j++)
@@ -492,15 +506,9 @@ static int write_page(const struct image_info *info, uint8_t *buffer,
 			printf("\n");
 
 			/*
-			 * Doing:
-			 * scramble(info, page, buffer, info->ecc_step_size);
-			 * scramble_BBM(info, page, buffer + info->ecc_step_size, 4);
-			 * Is the same as:
-			 * scramble(info, page, buffer, info->ecc_step_size + 4);
+			 * Scramble everything together: data + BBM + ECC
 			 */
-			scramble(info, page, buffer, info->ecc_step_size + 4);
-			// scramble_BBM(info, page, buffer + info->ecc_step_size, 4);
-			scramble_oob(info, page, buffer + info->ecc_step_size + 4, eccbytes);
+			scramble(info, page, buffer, info->ecc_step_size + 4 + eccbytes);
 		} else {
 			swap_bits(buffer, info->ecc_step_size + 4);
 			encode_bch(bch, buffer, info->ecc_step_size + 4, ecc);
@@ -566,12 +574,64 @@ static int create_image(const struct image_info *info)
 		return -1;
 	}
 
-	while (!feof(src)) {
-		int ret;
+	/* Generate boot0 copies if requested */
+	for (int copy = 0; copy < (info->boot0_copies > 0 ? info->boot0_copies : 1); copy++) {
+		int pages_in_copy = 0;
+		int page_in_copy = 0;  /* Relative page number within this copy for scrambling */
 
-		ret = write_page(info, buffer, src, rnd, dst, bch, page++);
-		if (ret)
-			return ret;
+		/* Reset source file to beginning for each copy */
+		if (copy > 0) {
+			fseek(src, 0, SEEK_SET);
+			clearerr(src);  /* Clear EOF flag */
+		}
+
+		while (1) {
+			int ret;
+
+			/* Check for EOF before trying to read */
+			if (feof(src))
+				break;
+
+			/* Use relative page number within copy for scrambling (matches Allwinner BSP) */
+			ret = write_page(info, buffer, src, rnd, dst, bch, page_in_copy);
+
+			/* Check if write_page hit EOF (returns 0 when cnt==0 at EOF) */
+			if (ret < 0) {
+				return ret;  /* Error */
+			}
+
+			/* Check if we hit EOF during the read */
+			if (feof(src)) {
+				break;
+			}
+
+			/* Page was successfully written, increment counters */
+			page_in_copy++;
+			pages_in_copy++;
+			page++;  /* Track absolute page for output file position */
+		}
+
+		/* Pad to pages_per_copy if specified by repeating source data */
+		if (info->pages_per_copy > 0 && pages_in_copy < info->pages_per_copy) {
+			/* For boot0, padding repeats from beginning of source */
+			int data_pages = pages_in_copy;  /* Number of pages actually written from source */
+
+			while (pages_in_copy < info->pages_per_copy) {
+				int ret;
+				/* Wrap around: repeat from beginning of source file */
+				int repeat_page = (pages_in_copy - data_pages) % data_pages;
+				fseek(src, repeat_page * info->usable_page_size, SEEK_SET);
+				clearerr(src);
+
+				/* Use repeat_page for scrambling to match the original page's scrambler seed */
+				ret = write_page(info, buffer, src, rnd, dst, bch, repeat_page);
+				if (ret < 0)
+					return ret;
+				/* Ignore EOF during padding - we're intentionally re-reading */
+				pages_in_copy++;
+				page++;
+			}
+		}
 	}
 
 	return 0;
@@ -595,6 +655,7 @@ static void display_help(int status)
 		"-b               --boot0              Build a boot0 image.\n"
 		"-s               --scramble           Scramble data\n"
 		"-6               --h6                 Build an image compatible with H6/H616 SoC\n"
+		"-n <copies>      --copies=<copies>    Number of boot0 copies (default: 1)\n"
 		"-a <offset>      --address=<offset>   Where the image will be programmed.\n"
 		"\n"
 		"Notes:\n"
@@ -709,6 +770,16 @@ static int check_image_info(struct image_info *info)
 		return -EINVAL;
 	}
 
+	/* Calculate pages_per_copy based on eraseblock size for boot0 copies */
+	if (info->boot0_copies > 0 && info->eraseblock_size > 0) {
+		/* For H6, boot0 uses 2 full eraseblocks per copy (128 pages per copy) */
+		if (info->h6) {
+			info->pages_per_copy = (info->eraseblock_size * 2) / info->page_size;
+		} else {
+			info->pages_per_copy = info->eraseblock_size / info->page_size;
+		}
+	}
+
 	return 0;
 }
 
@@ -734,10 +805,11 @@ int main(int argc, char **argv)
 			{"scramble", no_argument, 0, 's'},
 			{"address", required_argument, 0, 'a'},
 			{"h6", no_argument, 0, '6'},
+			{"copies", required_argument, 0, 'n'},
 			{0, 0, 0, 0},
 		};
 
-		int c = getopt_long(argc, argv, "c:p:o:u:e:ba:sh6",
+		int c = getopt_long(argc, argv, "c:p:o:u:e:ba:sh6n:",
 				long_options, &option_index);
 		if (c == EOF)
 			break;
@@ -774,6 +846,9 @@ int main(int argc, char **argv)
 			break;
 		case '6':
 			info.h6 = 1;
+			break;
+		case 'n':
+			info.boot0_copies = strtol(optarg, NULL, 0);
 			break;
 		case '?':
 			display_help(-1);
