@@ -277,6 +277,10 @@ INPUTS-y	+= $(obj)/sunxi-spl.bin
 
 ifdef CONFIG_NAND_SUNXI
 INPUTS-y	+= $(obj)/sunxi-spl-with-ecc.bin
+# Also build TOC0 with NAND params for secure boot configurations
+ifeq ($(CONFIG_SPL_IMAGE_TYPE),"sunxi_toc0")
+INPUTS-y	+= $(obj)/sunxi-spl-with-nand-params.bin
+endif
 endif
 endif
 
@@ -455,14 +459,30 @@ $(obj)/sunxi-spl.bin: $(obj)/$(SPL_BIN).bin FORCE
 
 quiet_cmd_sunxi_spl_image_builder = SUNXI_SPL_IMAGE_BUILDER $@
 cmd_sunxi_spl_image_builder = $(objtree)/tools/sunxi-spl-image-builder \
+				$(if $(CONFIG_SUN50I_GEN_H6),--h6) \
+				-b \
 				-c $(CONFIG_NAND_SUNXI_SPL_ECC_STRENGTH)/$(CONFIG_NAND_SUNXI_SPL_ECC_SIZE) \
 				-p $(CONFIG_SYS_NAND_PAGE_SIZE) \
 				-o $(CONFIG_SYS_NAND_OOBSIZE) \
 				-u $(CONFIG_NAND_SUNXI_SPL_USABLE_PAGE_SIZE) \
 				-e $(CONFIG_SYS_NAND_BLOCK_SIZE) \
-				-s -b $< $@
+				-n $(if $(CONFIG_NAND_SUNXI_BOOT0_COPIES),$(CONFIG_NAND_SUNXI_BOOT0_COPIES),4) \
+				-s $< $@
 $(obj)/sunxi-spl-with-ecc.bin: $(obj)/sunxi-spl.bin
 	$(call if_changed,sunxi_spl_image_builder)
+
+# Target to add NAND parameters to TOC0 image
+quiet_cmd_toc0_nand_params = TOC0_NAND_PARAMS $@
+cmd_toc0_nand_params = $(objtree)/tools/sunxi-spl-image-builder \
+				-t \
+				$(if $(CONFIG_SUN50I_GEN_H6),--h6) \
+				-c $(CONFIG_NAND_SUNXI_SPL_ECC_STRENGTH)/$(CONFIG_NAND_SUNXI_SPL_ECC_SIZE) \
+				-p $(CONFIG_SYS_NAND_PAGE_SIZE) \
+				-o $(CONFIG_SYS_NAND_OOBSIZE) \
+				-e $(CONFIG_SYS_NAND_BLOCK_SIZE) \
+				$< $@
+$(obj)/sunxi-spl-with-nand-params.bin: $(obj)/sunxi-spl.bin
+	$(call if_changed,toc0_nand_params)
 
 
 # MediaTek's specific SPL build

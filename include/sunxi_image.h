@@ -116,4 +116,32 @@ struct __packed toc0_item_info {
 #define TOC0_ITEM_INFO_NAME_KEY		0x00010303
 #define TOC0_ITEM_INFO_END		"IIE;"
 
+/* NAND storage data structure at TOC0 offset 0x2D4 */
+struct __packed toc0_nand_params {
+	__le32	ChannelCnt;
+	__le32	ChipCnt;
+	__le32	ChipConnectInfo;
+	__le32	RbCnt;
+	__le32	RbConnectInfo;
+	__le32	RbConnectMode;
+	__le32	BankCntPerChip;
+	__le32	DieCntPerChip;
+	__le32	PlaneCntPerDie;
+	__le32	SectorCntPerPage;
+	__le32	PageCntPerPhyBlk;
+	__le32	BlkCntPerDie;
+	__le32	OperationOpt;
+	__le32	FrequencePar;
+	__le32	EccMode;
+	uint8_t	NandChipId[8];
+	__le32	ValidBlkRatio;
+	__le32	good_block_ratio;
+	__le32	ReadRetryType;
+	__le32	DDRType;
+	__le32	Reserved[75];  /* Make total struct size 384 bytes */
+};
+
+#define TOC0_NAND_PARAMS_OFFSET	0x2D4
+#define TOC0_NAND_PARAMS_SIZE	sizeof(struct toc0_nand_params)
+
 #endif

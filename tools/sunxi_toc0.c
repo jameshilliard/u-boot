@@ -198,12 +198,17 @@ static const struct toc0_cert_item cert_item_template = {
 };
 
 #define TOC0_DEFAULT_NUM_ITEMS		3
+
+/*
+ * For NAND compatibility, we must reserve space at 0x2D4 for storage_data
+ * The firmware must be placed after: 0x2D4 + 384 (NAND params) + key + cert
+ * This ensures no overlap with the NAND parameter area
+ */
 #define TOC0_DEFAULT_HEADER_LEN						  \
 	ALIGN(								  \
-		sizeof(struct toc0_main_info)				+ \
-		sizeof(struct toc0_item_info) *	TOC0_DEFAULT_NUM_ITEMS	+ \
-		sizeof(struct toc0_cert_item)				+ \
-		sizeof(struct toc0_key_item),				  \
+		TOC0_NAND_PARAMS_OFFSET + TOC0_NAND_PARAMS_SIZE +	  \
+		sizeof(struct toc0_key_item) +				  \
+		sizeof(struct toc0_cert_item),				  \
 	32)
 
 static char *fw_key_file   = "fw_key.pem";
@@ -497,8 +502,10 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 	uint32_t item_length;
 	int i;
 
-	/* Hash the firmware for inclusion in the certificate. */
-	SHA256(fw_item, fw_item_len, digest);
+	/* Initialize NAND parameter area at offset 0x2D4 for NAND compatibility */
+	/* The actual parameters will be filled by sunxi-spl-image-builder */
+	struct toc0_nand_params *nand_params = (struct toc0_nand_params *)(buf + TOC0_NAND_PARAMS_OFFSET);
+	memset(nand_params, 0, sizeof(*nand_params));
 
 	/* Create the main TOC0 header, containing three items. */
 	memcpy(main_info->name, TOC0_MAIN_INFO_NAME, sizeof(main_info->name));
@@ -507,9 +514,13 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 	main_info->num_items	= cpu_to_le32(TOC0_DEFAULT_NUM_ITEMS);
 	memcpy(main_info->end, TOC0_MAIN_INFO_END, sizeof(main_info->end));
 
-	/* The first item links the ROTPK to the signing key. */
-	item_offset = sizeof(*main_info) +
-		      sizeof(*item_info) * TOC0_DEFAULT_NUM_ITEMS;
+	/*
+	 * The first item links the ROTPK to the signing key.
+	 * For NAND boot compatibility, we must preserve the storage_data area
+	 * at offset 0x2D4 (724 bytes) with size 384 bytes.
+	 * Items start after NAND params: 0x2D4 + 384 = 0x454, aligned to 32 bytes.
+	 */
+	item_offset = ALIGN(TOC0_NAND_PARAMS_OFFSET + TOC0_NAND_PARAMS_SIZE, 32);
 	/* Using an existing key item avoids needing the root private key. */
 	if (key_item) {
 		item_length = sizeof(*key_item);
@@ -527,23 +538,31 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 	item_info->length	= cpu_to_le32(item_length);
 	memcpy(item_info->end, TOC0_ITEM_INFO_END, sizeof(item_info->end));
 
-	/* The second item contains a certificate signed by the firmware key. */
-	item_offset = item_offset + item_length;
-	if (toc0_create_cert_item(buf + item_offset, &item_length,
+	/* Calculate where certificate will go */
+	uint32_t cert_offset = item_offset + item_length;
+	uint32_t cert_length = sizeof(struct toc0_cert_item);
+
+	/* The third item contains the actual boot code - it's already at the right place */
+	item_offset = ALIGN(cert_offset + cert_length, 32);
+	item_length = fw_item_len;
+
+	/* The firmware should already be at the correct offset due to TOC0_DEFAULT_HEADER_LEN */
+	assert(buf + item_offset == fw_item);
+
+	/* Hash the firmware at its location */
+	SHA256(buf + item_offset, item_length, digest);
+
+	/* Now create the certificate with the correct digest */
+	if (toc0_create_cert_item(buf + cert_offset, &cert_length,
 				  fw_key, digest))
 		goto err;
 
+	/* Fill in certificate item info */
 	item_info++;
 	item_info->name		= cpu_to_le32(TOC0_ITEM_INFO_NAME_CERT);
-	item_info->offset	= cpu_to_le32(item_offset);
-	item_info->length	= cpu_to_le32(item_length);
+	item_info->offset	= cpu_to_le32(cert_offset);
+	item_info->length	= cpu_to_le32(cert_length);
 	memcpy(item_info->end, TOC0_ITEM_INFO_END, sizeof(item_info->end));
-
-	/* The third item contains the actual boot code. */
-	item_offset = ALIGN(item_offset + item_length, 32);
-	item_length = fw_item_len;
-	if (buf + item_offset != fw_item)
-		memmove(buf + item_offset, fw_item, item_length);
 
 	item_info++;
 	item_info->name		= cpu_to_le32(TOC0_ITEM_INFO_NAME_FIRMWARE);
