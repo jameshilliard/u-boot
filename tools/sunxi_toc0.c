@@ -577,11 +577,25 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 
 	/* Pad to the required block size with 0xff to be flash-friendly. */
 	item_offset = item_offset + item_length;
-	item_length = ALIGN(item_offset, PAD_SIZE) - item_offset;
-	memset(buf + item_offset, 0xff, item_length);
+
+	/*
+	 * For NAND boot compatibility, pad to exactly 96 KB (0x18000) to match BSP.
+	 * This ensures the TOC0 header length field matches the BSP boot0.bin exactly.
+	 * If content is larger than 96 KB, use standard alignment.
+	 */
+	#define TOC0_NAND_SIZE 0x18000
+	if (item_offset < TOC0_NAND_SIZE) {
+		item_length = TOC0_NAND_SIZE - item_offset;
+		memset(buf + item_offset, 0xff, item_length);
+		item_offset = TOC0_NAND_SIZE;
+	} else {
+		/* Content is larger than 96 KB, use standard padding */
+		item_length = ALIGN(item_offset, PAD_SIZE) - item_offset;
+		memset(buf + item_offset, 0xff, item_length);
+		item_offset = item_offset + item_length;
+	}
 
 	/* Fill in the total padded file length. */
-	item_offset = item_offset + item_length;
 	main_info->length = cpu_to_le32(item_offset);
 
 	/* Verify enough space was provided when creating the image. */
@@ -930,8 +944,20 @@ static int toc0_vrec_header(struct image_tool_params *params,
 	/* Save off the unpadded data size for SHA256 calculation. */
 	params->orig_file_size = params->file_size - TOC0_DEFAULT_HEADER_LEN;
 
-	/* Return padding to 8K blocks. */
-	return ALIGN(params->file_size, PAD_SIZE) - params->file_size;
+	/*
+	 * For NAND compatibility, ensure buffer is large enough for 96 KB (0x18000).
+	 * If content is larger, use standard 8K block alignment.
+	 */
+	#define TOC0_NAND_SIZE 0x18000
+	uint32_t target_size;
+
+	if (params->file_size < TOC0_NAND_SIZE) {
+		target_size = TOC0_NAND_SIZE;
+	} else {
+		target_size = ALIGN(params->file_size, PAD_SIZE);
+	}
+
+	return target_size - params->file_size;
 }
 
 U_BOOT_IMAGE_TYPE(
