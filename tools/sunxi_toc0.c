@@ -552,10 +552,10 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 	item_info->load_addr	= cpu_to_le32(fw_addr);
 	memcpy(item_info->end, TOC0_ITEM_INFO_END, sizeof(item_info->end));
 
-	/* Pad to the required block size with 0xff to be flash-friendly. */
+	/* Pad to the required block size. BSP uses 0x00 padding, not 0xff. */
 	item_offset = item_offset + item_length;
 	item_length = ALIGN(item_offset, PAD_SIZE) - item_offset;
-	memset(buf + item_offset, 0xff, item_length);
+	memset(buf + item_offset, 0x00, item_length);
 
 	/* Fill in the total padded file length. */
 	item_offset = item_offset + item_length;
