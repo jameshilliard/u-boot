@@ -200,13 +200,17 @@ static const struct toc0_cert_item cert_item_template = {
 #define TOC0_DEFAULT_NUM_ITEMS		3
 
 /*
- * For NAND compatibility, we must reserve space at 0x2D4 for storage_data
- * The firmware must be placed after: 0x2D4 + 384 (NAND params) + key + cert
- * This ensures no overlap with the NAND parameter area
+ * For NAND compatibility, BSP requires 3KB padding before first item.
+ * Structure: TOC0 header (0x80) + 3KB padding (0xC00) + key + cert + firmware
+ * This ensures proper SBROM operation for NAND boot.
  */
+#define TOC0_HEADER_BASE						  \
+	(sizeof(struct toc0_main_info) +				  \
+	 TOC0_DEFAULT_NUM_ITEMS * sizeof(struct toc0_item_info))
+
 #define TOC0_DEFAULT_HEADER_LEN						  \
 	ALIGN(								  \
-		TOC0_NAND_PARAMS_OFFSET + TOC0_NAND_PARAMS_SIZE +	  \
+		TOC0_HEADER_BASE + 0xC00 +				  \
 		sizeof(struct toc0_key_item) +				  \
 		sizeof(struct toc0_cert_item),				  \
 	32)
@@ -516,11 +520,11 @@ static int toc0_create(uint8_t *buf, uint32_t len, RSA *root_key, RSA *fw_key,
 
 	/*
 	 * The first item links the ROTPK to the signing key.
-	 * For NAND boot compatibility, we must preserve the storage_data area
-	 * at offset 0x2D4 (724 bytes) with size 384 bytes.
-	 * Items start after NAND params: 0x2D4 + 384 = 0x454, aligned to 32 bytes.
+	 * For NAND boot compatibility, BSP requires 3KB (0xC00) padding before first item.
+	 * Boot0.bin places first item at 0xC80 with TOC0 header using first 0x80 bytes,
+	 * plus 3KB (3072 = 0xC00 bytes) padding. This gives us 0x80 + 0xC00 = 0xC80.
 	 */
-	item_offset = ALIGN(TOC0_NAND_PARAMS_OFFSET + TOC0_NAND_PARAMS_SIZE, 32);
+	item_offset = ALIGN(TOC0_HEADER_BASE + 0xC00, 32);  /* 3KB padding after header */
 	/* Using an existing key item avoids needing the root private key. */
 	if (key_item) {
 		item_length = sizeof(*key_item);
