@@ -348,6 +348,14 @@ static int sun8i_phy_init(struct emac_eth_dev *priv, void *dev)
 {
 	struct phy_device *phydev;
 
+	/* Connect AC300 and configure AC300 first */
+	phydev = phy_connect(priv->bus, 0x10, dev, priv->interface);
+	if (!phydev)
+		return -ENODEV;
+
+	phy_config(phydev);
+
+	/* Connect EPHY */
 	phydev = phy_connect(priv->bus, priv->phyaddr, dev, priv->interface);
 	if (!phydev)
 		return -ENODEV;
@@ -709,6 +717,9 @@ static int sun8i_emac_eth_probe(struct udevice *dev)
 
 	sun8i_mdio_init(dev->name, dev);
 	priv->bus = miiphy_get_dev_by_name(dev->name);
+	if (!priv->bus) {
+		printf("miiphy_get_dev_by_name failed\n");
+	}
 
 	return sun8i_phy_init(priv, dev);
 }
@@ -752,6 +763,29 @@ static int sun8i_handle_internal_phy(struct udevice *dev, struct emac_eth_dev *p
 	}
 
 	priv->use_internal_phy = true;
+
+	return 0;
+}
+
+static int sun8i_handle_phy_clk(struct udevice *dev, struct emac_eth_dev *priv)
+{
+	struct ofnode_phandle_args phandle;
+	int ret;
+
+	ret = ofnode_parse_phandle_with_args(dev_ofnode(dev), "phy-handle",
+					     NULL, 0, 0, &phandle);
+	if (ret)
+		return ret;
+
+	if (!ofnode_device_is_compatible(phandle.node,
+					 "ethernet-phy-ieee802.3-c22"))
+		return 0;
+
+	// ret = clk_get_by_index_nodev(phandle.node, 0, &priv->ephy_clk);
+	// if (ret && ret != -ENOENT) {
+	// 	dev_err(dev, "failed to get PHY clock\n");
+	// 	return ret;
+	// }
 
 	return 0;
 }
@@ -833,6 +867,10 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		ret = sun8i_handle_internal_phy(dev, priv);
 		if (ret)
 			return ret;
+	} else {
+		ret = sun8i_handle_phy_clk(dev, priv);
+		if (ret)
+			return ret;
 	}
 
 	priv->interface = pdata->phy_interface;
@@ -900,6 +938,11 @@ static const struct emac_variant emac_variant_h6 = {
 	.support_rmii		= true,
 };
 
+static const struct emac_variant emac_variant_h616_1 = {
+	.syscon_offset		= 0x34,
+	.support_rmii		= true,
+};
+
 static const struct udevice_id sun8i_emac_eth_ids[] = {
 	{ .compatible = "allwinner,sun8i-a83t-emac",
 	  .data = (ulong)&emac_variant_a83t },
@@ -913,6 +956,8 @@ static const struct udevice_id sun8i_emac_eth_ids[] = {
 	  .data = (ulong)&emac_variant_a64 },
 	{ .compatible = "allwinner,sun50i-h6-emac",
 	  .data = (ulong)&emac_variant_h6 },
+	{ .compatible = "allwinner,sun50i-h616-emac1",
+	  .data = (ulong)&emac_variant_h616_1 },
 	{ }
 };
 
