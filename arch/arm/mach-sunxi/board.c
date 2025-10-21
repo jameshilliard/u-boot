@@ -508,6 +508,12 @@ void board_init_f(ulong dummy)
 	i2c_init_board();
 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
 #endif
+	/*
+	 * pinmux pwm5:
+	 * TODO:
+	 * This should be done in dts
+	 */
+	sunxi_gpio_set_cfgpin(SUNXI_GPA(12), 2);
 	sunxi_board_init();
 }
 #endif /* CONFIG_XPL_BUILD */
