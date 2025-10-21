@@ -23,6 +23,7 @@
 #define CCU_H6_APB1_CFG			0x520
 #define CCU_H6_APB2_CFG			0x524
 #define CCU_H6_MBUS_CFG			0x540
+#define CCU_H6_PWM_GATE_RESET		0x7ac
 #define CCU_H6_DRAM_CLK_CFG		0x800
 #define CCU_H6_MBUS_GATE		0x804
 #define CCU_H6_DRAM_GATE_RESET		0x80c
@@ -85,6 +86,10 @@
 #define CCM_CPU_AXI_APB_MASK		0x300
 #define CCM_CPU_AXI_AXI_MASK		0x3
 #define CCM_CPU_AXI_DEFAULT_FACTORS	0x301
+
+/* pwm_gate_reset bit field */
+#define CCU_PWM_RST			BIT(16)
+#define CCU_PWM_GATING			BIT(0)
 
 #ifdef CONFIG_MACH_SUN50I_H6				/* H6 */
 

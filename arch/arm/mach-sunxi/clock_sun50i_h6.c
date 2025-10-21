@@ -5,6 +5,7 @@
 #include <asm/arch/clock.h>
 #include <asm/arch/prcm.h>
 #include <linux/delay.h>
+#include <asm/arch/pwm_sun50i_h616.h>
 
 #ifndef SUNXI_CPU_PLL_CFG_BASE
 #define SUNXI_CPU_PLL_CFG_BASE 0
@@ -15,6 +16,7 @@ void clock_init_safe(void)
 {
 	void *const ccm = (void *)SUNXI_CCM_BASE;
 	void *const prcm = (void *)SUNXI_PRCM_BASE;
+	void *const pwm = (void *)SUNXI_PWM_BASE;
 
 	if (IS_ENABLED(CONFIG_MACH_SUN50I_H616))
 		setbits_le32(prcm + CCU_PRCM_SYS_PWROFF_GATING, 0x10);
@@ -71,6 +73,20 @@ void clock_init_safe(void)
 	} else {
 		writel(MBUS_CLK_SRC_PLL6X2 | MBUS_CLK_M(3),
 		       ccm + CCU_H6_MBUS_CFG);
+	}
+
+	if (IS_ENABLED(CONFIG_MACH_SUN50I_H616)) {
+		/* add for pwm ephy */
+		writel(CCU_PWM_RST | CCU_PWM_GATING,
+		       ccm + CCU_H6_PWM_GATE_RESET);
+
+		writel(PWM_ENTIRE_CYCLE(9) | PWM_ACTIVE_CYCLE(5),
+		       pwm + SUNXI_PWM_PERIOD_REG(5));
+
+		writel(PWM_CLK_GATING | PWM45_CLK_SRC_BYPASS_TO_PWM5,
+		       pwm + SUNXI_PWM_CCR45R);
+
+		writel(PWM_ENABLE(5), pwm + SUNXI_PWM_ENR);
 	}
 }
 
