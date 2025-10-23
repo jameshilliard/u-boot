@@ -358,6 +358,14 @@ static int sun8i_phy_init(struct emac_eth_dev *priv, void *dev)
 {
 	struct phy_device *phydev;
 
+	/* Connect AC300 and configure AC300 first */
+	phydev = phy_connect(priv->bus, 0x10, dev, priv->interface);
+	if (!phydev)
+		return -ENODEV;
+
+	phy_config(phydev);
+
+	/* Connect EPHY */
 	phydev = phy_connect(priv->bus, priv->phyaddr, dev, priv->interface);
 	if (!phydev)
 		return -ENODEV;
