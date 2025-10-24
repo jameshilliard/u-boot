@@ -204,7 +204,6 @@ void clock_set_pll1(unsigned int clk)
 	else
 		clock_h6_set_cpu_pll(clk);
 }
-#endif /* CONFIG_XPL_BUILD */
 
 int clock_twi_onoff(int port, int state)
 {
@@ -231,6 +230,7 @@ int clock_twi_onoff(int port, int state)
 
 	return 0;
 }
+#endif /* CONFIG_XPL_BUILD */
 
 /* PLL_PERIPH0 clock, used by the MMC driver */
 unsigned int clock_get_pll6(void)
