@@ -656,38 +656,10 @@ void sunxi_board_init(void)
 	 * Only clock up the CPU to full speed if we are reasonably
 	 * assured it's being powered with suitable core voltage
 	 */
-	if (!power_failed) {
+	if (!power_failed)
 		clock_set_pll1(get_board_sys_clk());
-	} else {
-		clock_set_pll1(792000000);
-		printf("Failed to set core voltage!   set CPU 792000000hz frequency\n");
-	}
-
-	{
-#define sunxi_ac300_key (1 << 8)
-		u8 data[2];
-		int val;
-		val = readl(0x300622c); // SID?
-
-		if ((val & sunxi_ac300_key) == 0) {
-			i2c_set_bus_num(1);
-			data[0] = 0;
-			data[1] = 0;
-			i2c_write(0x10, 0xfe, 1, data, 2);
-			i2c_write(0x10, 2, 1, data, 2);
-			data[1] = 1;
-			i2c_write(0x10, 2, 1, data, 2);
-			data[1] = 0xf;
-			i2c_write(0x10, 0x16, 1, data, 2);
-			data[1] = 3;
-			i2c_write(0x10, 0x14, 1, data, 2);
-			data[1] = 0x60;
-			i2c_write(0x10, 0xfe, 1, data, 2);
-			data[0] = 0x08;
-			data[1] = 0x14;
-			i2c_write(0x10, 0, 1, data, 2);
-		}
-	}
+	else
+		printf("Failed to set core voltage! Can't set CPU frequency\n");
 }
 #endif /* CONFIG_XPL_BUILD */
 
