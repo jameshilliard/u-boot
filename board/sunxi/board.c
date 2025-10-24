@@ -109,16 +109,6 @@ void i2c_init_board(void)
 #endif
 #endif
 
-#ifdef CONFIG_I2C3_ENABLE
-#if defined(CONFIG_MACH_SUN50I_H616)
-	sunxi_gpio_set_cfgpin(SUNXI_GPA(10), 2);
-	sunxi_gpio_set_cfgpin(SUNXI_GPA(11), 2);
-	sunxi_gpio_set_pull(SUNXI_GPA(10), SUNXI_GPIO_PULL_UP);
-	sunxi_gpio_set_pull(SUNXI_GPA(11), SUNXI_GPIO_PULL_UP);
-	clock_twi_onoff(3, 1);
-#endif
-#endif
-
 #ifdef CONFIG_R_I2C_ENABLE
 #ifdef CONFIG_MACH_SUN50I
 	clock_twi_onoff(5, 1);
@@ -239,14 +229,6 @@ int board_init(void)
 	ret = axp_gpio_init();
 	if (ret)
 		return ret;
-
-#if CONFIG_IS_ENABLED(DM_I2C)
-	/*
-	 * Temporary workaround for enabling I2C clocks until proper sunxi DM
-	 * clk, reset and pinctrl drivers land.
-	 */
-	i2c_init_board();
-#endif
 
 	eth_init_board();
 
