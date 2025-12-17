@@ -393,10 +393,10 @@ int genphy_parse_link(struct phy_device *phydev)
 static void ac300_ephy_enable(struct phy_device *phydev)
 {
 	struct mii_dev *bus = phydev->bus;
-	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x1f40);	/* reset ephy */
-	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x1f43);	/* de-reset ephy */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x0000);	/* reset ephy */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x0003);	/* de-reset ephy */
 
-	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x1fb7);	/* open clk gate */
+	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x00, 0x00b7);	/* open clk gate */
 	bus->write(bus, AC300_DEV, MDIO_DEVAD_NONE, 0x05, 0xa81f);	/* enable io */
 
 	mdelay(10);
