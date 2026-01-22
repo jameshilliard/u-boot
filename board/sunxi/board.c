@@ -17,8 +17,10 @@
 #include <i2c.h>
 #include <image.h>
 #include <init.h>
+#include <jffs2/load_kernel.h>
 #include <log.h>
 #include <mmc.h>
+#include <mtd_node.h>
 #include <axp_pmic.h>
 #include <generic-phy.h>
 #include <phy-sun4i-usb.h>
@@ -931,6 +933,13 @@ static void board_dt_fixup(void *blob)
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
 	int __maybe_unused r;
+
+	static const struct node_info nodes[] = {
+		{ "allwinner,sun50i-h616-nand-controller", MTD_DEV_TYPE_NAND, },
+	};
+
+	if (IS_ENABLED(CONFIG_FDT_FIXUP_PARTITIONS) && IS_ENABLED(CONFIG_NAND_SUNXI))
+		fdt_fixup_mtdparts(blob, nodes, ARRAY_SIZE(nodes));
 
 	/*
 	 * Call setup_environment and fdt_fixup_ethernet again
