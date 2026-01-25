@@ -154,6 +154,7 @@
 #define NFC_ECC_EXCEPTION	BIT(4)
 #define NFC_ECC_BLOCK_512	BIT(5)
 #define NFC_RANDOM_EN(nfc)	((nfc)->caps->random_en_mask)
+#define NFC_RANDOM_DIRECTION(nfc) ((nfc)->caps->random_dir_mask)
 #define NFC_ECC_MODE_MSK(nfc)	((nfc)->caps->ecc_mode_mask)
 #define NFC_ECC_MODE(nfc, x)	field_prep(NFC_ECC_MODE_MSK(nfc), (x))
 #define NFC_RANDOM_SEED_MSK	(0x7fff << 16)
@@ -170,7 +171,7 @@
 #define NFC_ECC_PAT_FOUND(x)	BIT(x)
 #define NFC_ECC_PAT_FOUND_MSK(nfc) ((nfc)->caps->pat_found_mask)
 
-#define NFC_ECC_ERR_CNT(b, x)	(((x) >> ((b) * 8)) & 0xff)
+#define NFC_ECC_ERR_CNT(b, x)	(((x) >> (((b) % 4) * 8)) & 0xff)
 
 #define NFC_USER_DATA_LEN_MSK(step) \
 	(0xf << (((step) % NFC_REG_USER_DATA_LEN_CAPACITY) * 4))
@@ -198,6 +199,9 @@
  * @pat_found_mask:	ECC_PAT_FOUND mask in NFC_REG_PAT_FOUND register
  * @ecc_mode_mask:	ECC_MODE mask in NFC_ECC_CTL register
  * @random_en_mask:	RANDOM_EN mask in NFC_ECC_CTL register
+ * @random_dir_mask:	RANDOM_DIRECTION mask in NFC_ECC_CTL register
+ * @no_scramble_bbm:	Don't scramble BBM bytes even if NAND_NEED_SCRAMBLING
+ *			is set
  * @user_data_len_tab:  Table of lenghts supported by USER_DATA_LEN register
  *			The table index is the value to set in NFC_USER_DATA_LEN
  *			registers, and the corresponding value is the number of
@@ -205,6 +209,8 @@
  * @nuser_data_tab:	Size of @user_data_len_tab
  * @max_ecc_steps:	Maximum supported steps for ECC, this is also the
  *			number of user data registers
+ * @sram_size:		Size of the NAND controller SRAM
+ * @user_data_len:	Per-step user-data length (bytes)
  */
 struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
@@ -220,9 +226,13 @@ struct sunxi_nfc_caps {
 	unsigned int ecc_err_mask;
 	unsigned int ecc_mode_mask;
 	unsigned int random_en_mask;
+	unsigned int random_dir_mask;
+	bool no_scramble_bbm;
 	const u8 *user_data_len_tab;
 	unsigned int nuser_data_tab;
 	unsigned int max_ecc_steps;
+	unsigned int sram_size;
+	unsigned int (*user_data_len)(int step);
 };
 
 #endif
