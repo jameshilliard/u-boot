@@ -127,6 +127,11 @@ struct __packed toc0_cert_item {
 				struct __packed toc0_extension {
 					toc0_small_int tag_digest;
 					uint8_t digest[32];
+					toc0_small_seq tag_nvc_seq;
+					struct __packed toc0_nvc_seq {
+						int oid;
+						int nvc;
+					} nvc_seq;
 				} extension;
 			} explicit3;
 		} mainSequence;
@@ -174,6 +179,11 @@ static const struct toc0_cert_item cert_item_template = {
 				{
 					TOC0_SMALL_INT(sizeof_field(struct toc0_extension, digest)),
 					{},
+					TOC0_SMALL_SEQ(sizeof(struct toc0_nvc_seq)),
+					{
+						1,
+						31,
+					},
 				},
 			},
 		},
