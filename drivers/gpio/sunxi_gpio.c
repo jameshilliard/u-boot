@@ -295,13 +295,10 @@ static int sunxi_gpio_set_flags(struct udevice *dev, unsigned int offset,
 		sunxi_gpio_set_value_bank(plat->regs, offset, value);
 		sunxi_gpio_set_cfgbank(plat->regs, offset, SUNXI_GPIO_OUTPUT);
 	} else if (flags & GPIOD_IS_IN) {
-		u32 pull = 0;
-
 		if (flags & GPIOD_PULL_UP)
-			pull = 1;
+			sunxi_gpio_set_pull_bank(plat->regs, offset, 1);
 		else if (flags & GPIOD_PULL_DOWN)
-			pull = 2;
-		sunxi_gpio_set_pull_bank(plat->regs, offset, pull);
+			sunxi_gpio_set_pull_bank(plat->regs, offset, 2);
 		sunxi_gpio_set_cfgbank(plat->regs, offset, SUNXI_GPIO_INPUT);
 	}
 
