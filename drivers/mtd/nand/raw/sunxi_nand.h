@@ -181,9 +181,6 @@
 
 #define NFC_MAX_CS		7
 
-/* On A10, the user data length register is 4 bytes */
-#define USER_DATA_SZ 4
-
 /*
  * NAND Controller capabilities structure: stores NAND controller capabilities
  * for distinction between compatible strings.
@@ -208,6 +205,7 @@
  * @nuser_data_tab:	Size of @user_data_len_tab
  * @max_ecc_steps:	Maximum supported steps for ECC, this is also the
  *			number of user data registers
+ * @user_data_len	Function returning the user data length for a step
  */
 struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
@@ -226,6 +224,39 @@ struct sunxi_nfc_caps {
 	const u8 *user_data_len_tab;
 	unsigned int nuser_data_tab;
 	unsigned int max_ecc_steps;
+	unsigned int (*user_data_len)(int step);
 };
+
+static inline unsigned int sunxi_user_data_len_h616(int step)
+{
+	/*
+	 * On H6/H616, the user data size became configurable,
+	 * from 0 bytes to 32, via the USER_DATA_LEN registers.
+	 *
+	 * In H616 vendor image, the user data length is 8 byte on step 0
+	 * (that includes the BBM) and 0 bytes for the rest.
+	 * So the OOB layout is:
+	 * [BBM] [BBM] [6bytes USER_DATA_STEP0] [ECC_STEP0 bytes] [ECC_STEP1 bytes]...
+	 */
+	if (step == 0)
+		return 8;
+	return 0;
+}
+
+static inline unsigned int sunxi_user_data_len_a10(int step)
+{
+	/*
+	 * On A10/A23, this is the size of the NDFC User Data Register,
+	 * containing the mandatory user data bytes preceding the ECC for each
+	 * ECC step (and including the BBM)
+	 * Thus, for each ECC step, we need USER_DATA_SZ + ECC bytes.
+	 *
+	 * So the layout is:
+	 * [BBM] [BBM] [2Bytes USER_DATA_STEP0] [ECC_STEP0 bytes]
+	 * [4bytes USER_DATA_STEP1] [ECC_step1 bytes]...
+	 */
+
+	return 4;
+}
 
 #endif

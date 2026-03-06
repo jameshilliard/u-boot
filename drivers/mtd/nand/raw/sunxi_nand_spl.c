@@ -64,6 +64,7 @@ __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
 	.ecc_mode_mask = GENMASK(15, 12),
 	.ecc_err_mask = GENMASK(15, 0),
 	.random_en_mask = BIT(9),
+	.user_data_len = &sunxi_user_data_len_a10,
 };
 
 __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
@@ -76,6 +77,7 @@ __maybe_unused static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
 	.user_data_len_tab = sunxi_user_data_len_h6,
 	.nuser_data_tab = ARRAY_SIZE(sunxi_user_data_len_h6),
 	.random_en_mask = BIT(5),
+	.user_data_len = &sunxi_user_data_len_h616,
 };
 
 #define DEFAULT_TIMEOUT_US	100000
@@ -271,16 +273,17 @@ static void sunxi_nfc_set_user_data_len(const struct nfc_config *nfc,
 
 /*
  * Values in this table are obtained by doing:
- * DIV_ROUND_UP(info->ecc_strength * 14, 8) + USER_DATA_SZ
- * So it's the number of bytes needed for ECC + user data for one step.
+ * DIV_ROUND_UP(info->ecc_strength * 14, 8)
+ * So it's the number of bytes needed for ECC one step
+ * (not counting the user data length)
  */
 #if defined(CONFIG_MACH_SUN50I_H616) || defined(CONFIG_MACH_SUN50I_H6)
 static const int ecc_bytes[] = {
-	32, 46, 54, 60, 74, 82, 88, 96, 102, 110, 116, 124, 130, 138, 144
+	28, 42, 50, 56, 70, 78, 84, 92, 98, 106, 112, 120, 126, 134, 140
 };
 #else
 static const int ecc_bytes[] = {
-	32, 46, 54, 60, 74, 88, 102, 110, 116
+	28, 42, 50, 56, 70, 84, 98, 106, 112
 };
 #endif
 
@@ -300,6 +303,7 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 	u16 rand_seed = 0;
 	int oob_chunk_sz = ecc_bytes[conf->ecc_strength];
 	int page = offs / conf->page_size;
+	int oob_off = conf->page_size;
 	u32 ecc_st, pattern_found;
 	int i;
 	/* From the controller point of view, we are at step 0 */
@@ -316,9 +320,9 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 	/* Retrieve data from SRAM (PIO) */
 	for (i = 0; i < nsectors; i++) {
 		int data_off = i * conf->ecc_size;
-		int oob_off = conf->page_size + (i * oob_chunk_sz);
 		u8 *data = dest + data_off;
 		u32 ecc512_bit = 0;
+		unsigned int user_data_sz = conf->caps->user_data_len(i);
 
 		if (conf->caps->has_ecc_block_512 && conf->ecc_size == 512)
 			ecc512_bit = NFC_ECC_BLOCK_512;
@@ -345,7 +349,7 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		nand_change_column(oob_off);
 
 		sunxi_nfc_reset_user_data_len(conf);
-		sunxi_nfc_set_user_data_len(conf, USER_DATA_SZ, nfc_step);
+		sunxi_nfc_set_user_data_len(conf, user_data_sz, nfc_step);
 
 		nand_exec_cmd(NFC_DATA_TRANS | NFC_ECC_OP);
 		/* Get the ECC status */
@@ -371,13 +375,14 @@ static int nand_read_page(const struct nfc_config *conf, u32 offs,
 		nand_readlcpy((u32 *)data,
 			      (void *)(uintptr_t)SUNXI_NFC_BASE + NFC_RAM0_BASE,
 			      conf->ecc_size);
-
 		/* Stop the ECC engine */
 		writel_nfc(readl_nfc(NFC_REG_ECC_CTL) & ~NFC_ECC_EN,
 			   NFC_REG_ECC_CTL);
 
 		if (data_off + conf->ecc_size >= len)
 			break;
+
+		oob_off += oob_chunk_sz + user_data_sz;
 	}
 
 	return 0;
@@ -387,6 +392,7 @@ static int nand_max_ecc_strength(struct nfc_config *conf)
 {
 	int max_oobsize, max_ecc_bytes;
 	int nsectors = conf->page_size / conf->ecc_size;
+	unsigned int total_user_data_sz = 0;
 	int i;
 
 	/*
@@ -412,8 +418,11 @@ static int nand_max_ecc_strength(struct nfc_config *conf)
 
 	max_ecc_bytes = max_oobsize / nsectors;
 
+	for (i = 0; i < nsectors; i++)
+		total_user_data_sz += conf->caps->user_data_len(i);
+
 	for (i = 0; i < ARRAY_SIZE(ecc_bytes); i++) {
-		if (ecc_bytes[i] > max_ecc_bytes)
+		if (ecc_bytes[i] + total_user_data_sz > max_ecc_bytes)
 			break;
 	}
 
