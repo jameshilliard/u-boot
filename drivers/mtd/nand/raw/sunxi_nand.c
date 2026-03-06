@@ -114,6 +114,7 @@ struct sunxi_nand_hw_ecc {
  * @clk_rate:		clk_rate required for this NAND chip
  * @timing_cfg		TIMING_CFG register value for this NAND chip
  * @selected:		current active CS
+ * @scramble_bbm:	if the bbm should be scrambled or not
  * @nsels:		number of CS lines required by the NAND chip
  * @sels:		array of CS lines descriptions
  */
@@ -128,6 +129,7 @@ struct sunxi_nand_chip {
 	u32 addr[2];
 	int cmd_cycles;
 	u8 cmd[2];
+	bool scramble_bbm;
 	int nsels;
 	struct sunxi_nand_chip_sel sels[0];
 };
@@ -783,7 +785,8 @@ static void sunxi_nfc_hw_ecc_get_prot_oob_bytes(struct nand_chip *nand, u8 *oob,
 	}
 
 	/* De-randomize the Bad Block Marker. */
-	if (bbm && nand->options & NAND_NEED_SCRAMBLING)
+	if (bbm && nand->options & NAND_NEED_SCRAMBLING &&
+	    !sunxi_nand->scramble_bbm)
 		sunxi_nfc_randomize_bbm(&nand->mtd, page, oob);
 }
 
@@ -943,6 +946,7 @@ static int sunxi_nfc_hw_ecc_write_chunk(struct mtd_info *mtd,
 					int page)
 {
 	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
 	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
 	unsigned int user_data_sz = nfc->caps->user_data_len(step);
 	struct nand_ecc_ctrl *ecc = &nand->ecc;
@@ -957,7 +961,8 @@ static int sunxi_nfc_hw_ecc_write_chunk(struct mtd_info *mtd,
 	sunxi_nfc_randomizer_write_buf(mtd, data, ecc->size, false, page);
 
 	/* Fill OOB data in */
-	if ((nand->options & NAND_NEED_SCRAMBLING) && bbm) {
+	if ((nand->options & NAND_NEED_SCRAMBLING) && bbm &&
+	    !sunxi_nand->scramble_bbm) {
 		u8 *user_data;
 
 		user_data = kzalloc(user_data_sz, GFP_KERNEL);
@@ -1705,6 +1710,9 @@ static int sunxi_nand_chip_init(struct udevice *dev, struct sunxi_nfc *nfc,
 	chip->nsels = nsels;
 	chip->selected = -1;
 
+	if (ofnode_read_bool(np, "allwinner,scramble_bbm"))
+		chip->scramble_bbm = true;
+
 	for (i = 0; i < nsels; i++) {
 		ret = ofnode_read_u32_index(np, "reg", i, &tmp);
 		if (ret) {
@@ -1786,6 +1794,9 @@ static int sunxi_nand_chip_init(struct udevice *dev, struct sunxi_nfc *nfc,
 
 	if (nand->bbt_options & NAND_BBT_USE_FLASH)
 		nand->bbt_options |= NAND_BBT_NO_OOB;
+
+	if (chip->scramble_bbm)
+		nand->options |= NAND_NEED_SCRAMBLING;
 
 	if (nand->options & NAND_NEED_SCRAMBLING)
 		nand->options |= NAND_NO_SUBPAGE_WRITE;
