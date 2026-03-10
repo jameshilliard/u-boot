@@ -1507,6 +1507,12 @@ static void sunxi_nand_hw_common_ecc_ctrl_cleanup(struct nand_ecc_ctrl *ecc)
 }
 #endif /* __UBOOT__ */
 
+static int sunxi_nfc_hw_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page)
+{
+	chip->cmdfunc(mtd, NAND_CMD_READ0, 0, page);
+	return chip->ecc.read_page(mtd, chip, chip->buffers->databuf, 1, page);
+}
+
 static int sunxi_nand_hw_ecc_ctrl_init(struct mtd_info *mtd,
 				       struct nand_ecc_ctrl *ecc)
 {
@@ -1523,6 +1529,7 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct mtd_info *mtd,
 	if (ret)
 		return ret;
 
+	ecc->read_oob = sunxi_nfc_hw_ecc_read_oob;
 	ecc->read_page = sunxi_nfc_hw_ecc_read_page;
 	ecc->write_page = sunxi_nfc_hw_ecc_write_page;
 	ecc->read_subpage = sunxi_nfc_hw_ecc_read_subpage;
