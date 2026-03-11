@@ -62,7 +62,41 @@ config DRAM_SUN55I_A523
 	help
 	  Select this DRAM controller driver for A523/T527 SoCs.
 
-if DRAM_SUN50I_H616 || DRAM_SUN50I_A133 || DRAM_SUN55I_A523
+if DRAM_SUN50I_H616
+choice
+	prompt "H616 DRAM profile source"
+	default SUNXI_DRAM_H616_FIXED_PROFILE
+	help
+	  Select whether SPL uses the fixed H616 Kconfig DRAM settings or
+	  loads an H616 DRAM profile from the device tree at boot.
+
+config SUNXI_DRAM_H616_FIXED_PROFILE
+	bool "Fixed build-time DRAM profile"
+	help
+	  Use a single H616 DRAM profile selected at build time.
+	  This keeps the existing Kconfig-based timing selection flow.
+
+config SUNXI_DRAM_H616_GPIO_SELECT
+	bool "GPIO-selected DRAM profile"
+	select GPIO
+	select OF_CONTROL
+	select SPL_OF_CONTROL
+	select SPL_GPIO
+	help
+	  Enable runtime H616 DRAM profile selection using GPIO strap bits
+	  described in the U-Boot device tree.
+
+	  SPL reads the allwinner,dram-coding-gpios property from the
+	  /dram-profiles node, decodes up to four strap bits into a profile
+	  ID, and loads the matching profile from /dram-profiles instead of
+	  using a fixed build-time H616 DRAM profile.
+
+	  Each profile must provide the H616 DRAM parameters used by the
+	  driver. Supported dram-type values are DDR3, LPDDR3, and LPDDR4.
+endchoice
+endif
+
+if (DRAM_SUN50I_H616 && SUNXI_DRAM_H616_FIXED_PROFILE) || DRAM_SUN50I_A133 || DRAM_SUN55I_A523
 config DRAM_SUNXI_DX_ODT
 	hex "DRAM DX ODT parameter"
 	help
@@ -608,6 +642,7 @@ config SUNXI_DRAM_DDR4
 
 choice
 	prompt "DRAM Type and Timing"
+	depends on !DRAM_SUN50I_H616 || SUNXI_DRAM_H616_FIXED_PROFILE
 	default SUNXI_DRAM_A523_LPDDR4 if MACH_SUN55I_A523
 	default SUNXI_DRAM_DDR3_1333 if !MACH_SUN8I_V3S
 	default SUNXI_DRAM_DDR2_V3S if MACH_SUN8I_V3S
@@ -647,7 +682,8 @@ config SUNXI_DRAM_H6_DDR3_1333
 config SUNXI_DRAM_H616_LPDDR3
 	bool "LPDDR3 DRAM chips on the H616 DRAM controller"
 	select SUNXI_DRAM_LPDDR3
-	depends on DRAM_SUN50I_H616 || DRAM_SUN50I_A133
+	depends on (DRAM_SUN50I_H616 && SUNXI_DRAM_H616_FIXED_PROFILE) || \
+		   DRAM_SUN50I_A133
 	help
 	  This option is the LPDDR3 timing used by the stock boot0 by
 	  Allwinner.
@@ -655,7 +691,8 @@ config SUNXI_DRAM_H616_LPDDR3
 config SUNXI_DRAM_H616_LPDDR4
 	bool "LPDDR4 DRAM chips on the H616 DRAM controller"
 	select SUNXI_DRAM_LPDDR4
-	depends on DRAM_SUN50I_H616 || DRAM_SUN50I_A133
+	depends on (DRAM_SUN50I_H616 && SUNXI_DRAM_H616_FIXED_PROFILE) || \
+		   DRAM_SUN50I_A133
 	help
 	  This option is the LPDDR4 timing used by the stock boot0 by
 	  Allwinner.
@@ -663,7 +700,8 @@ config SUNXI_DRAM_H616_LPDDR4
 config SUNXI_DRAM_H616_DDR3_1333
 	bool "DDR3-1333 boot0 timings on the H616 DRAM controller"
 	select SUNXI_DRAM_DDR3
-	depends on DRAM_SUN50I_H616 || DRAM_SUN50I_A133
+	depends on (DRAM_SUN50I_H616 && SUNXI_DRAM_H616_FIXED_PROFILE) || \
+		   DRAM_SUN50I_A133
 	help
 	  This option is the DDR3 timing used by the boot0 on H616 TV boxes
 	  which use a DDR3-1333 timing.
@@ -719,6 +757,7 @@ config DRAM_TYPE
 
 config DRAM_CLK
 	int "sunxi dram clock speed"
+	depends on !DRAM_SUN50I_H616 || SUNXI_DRAM_H616_FIXED_PROFILE
 	default 792 if MACH_SUN9I
 	default 648 if MACH_SUN8I_R40
 	default 360 if MACH_SUN4I || MACH_SUN5I || MACH_SUN7I || \

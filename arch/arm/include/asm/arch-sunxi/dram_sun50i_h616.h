@@ -168,13 +168,16 @@ struct dram_config {
 	u8 bus_full_width;
 };
 
-static inline int ns_to_t(int nanoseconds)
+static inline int h616_ns_to_t(const struct dram_para *para, int nanoseconds)
 {
-	const unsigned int ctrl_freq = CONFIG_DRAM_CLK / 2;
+	const unsigned int ctrl_freq = para->clk / 2;
 
 	return DIV_ROUND_UP(ctrl_freq * nanoseconds, 1000);
 }
 
+void h616_ddr3_set_timing_params(const struct dram_para *para);
+void h616_lpddr3_set_timing_params(const struct dram_para *para);
+void h616_lpddr4_set_timing_params(const struct dram_para *para);
 void mctl_set_timing_params(const struct dram_para *para);
 
 #endif /* _SUNXI_DRAM_SUN50I_H616_H */

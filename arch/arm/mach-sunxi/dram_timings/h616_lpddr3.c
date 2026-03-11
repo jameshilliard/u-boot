@@ -14,33 +14,33 @@
 #include <asm/arch/dram.h>
 #include <asm/arch/cpu.h>
 
-void mctl_set_timing_params(const struct dram_para *para)
+void h616_lpddr3_set_timing_params(const struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	u8 tccd		= 2;
-	u8 tfaw		= ns_to_t(50);
-	u8 trrd		= max(ns_to_t(6), 4);
-	u8 trcd		= ns_to_t(24);
-	u8 trc		= ns_to_t(70);
-	u8 txp		= max(ns_to_t(8), 3);
-	u8 trtp		= max(ns_to_t(8), 2);
-	u8 trp		= ns_to_t(27);
-	u8 tras		= ns_to_t(41);
-	u16 trefi	= ns_to_t(7800) / 64;
-	u16 trfc	= ns_to_t(210);
+	u8 tfaw		= h616_ns_to_t(para, 50);
+	u8 trrd		= max(h616_ns_to_t(para, 6), 4);
+	u8 trcd		= h616_ns_to_t(para, 24);
+	u8 trc		= h616_ns_to_t(para, 70);
+	u8 txp		= max(h616_ns_to_t(para, 8), 3);
+	u8 trtp		= max(h616_ns_to_t(para, 8), 2);
+	u8 trp		= h616_ns_to_t(para, 27);
+	u8 tras		= h616_ns_to_t(para, 41);
+	u16 trefi	= h616_ns_to_t(para, 7800) / 64;
+	u16 trfc	= h616_ns_to_t(para, 210);
 	u16 txsr	= 88;
 
 	u8 tmrw		= 5;
 	u8 tmrd		= 5;
-	u8 tmod		= max(ns_to_t(15), 12);
-	u8 tcke		= max(ns_to_t(6), 3);
-	u8 tcksrx	= max(ns_to_t(12), 4);
-	u8 tcksre	= max(ns_to_t(12), 4);
+	u8 tmod		= max(h616_ns_to_t(para, 15), 12);
+	u8 tcke		= max(h616_ns_to_t(para, 6), 3);
+	u8 tcksrx	= max(h616_ns_to_t(para, 12), 4);
+	u8 tcksre	= max(h616_ns_to_t(para, 12), 4);
 	u8 tckesr	= tcke + 2;
 	u8 trasmax	= (para->clk / 2) / 16;
-	u8 txs		= ns_to_t(360) / 32;
+	u8 txs		= h616_ns_to_t(para, 360) / 32;
 	u8 txsdll	= 16;
 	u8 txsabort	= 4;
 	u8 txsfast	= 4;

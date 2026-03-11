@@ -15,6 +15,17 @@
 #include <init.h>
 #include <log.h>
 #include <asm/io.h>
+
+#define H616_GPIO_SELECT_ENABLED	IS_ENABLED(CONFIG_SUNXI_DRAM_H616_GPIO_SELECT)
+
+#if H616_GPIO_SELECT_ENABLED
+#include <asm-generic/gpio.h>
+#include <asm/global_data.h>
+#include <errno.h>
+#include <sunxi_gpio.h>
+#include <linux/libfdt.h>
+#include <linux/string.h>
+#endif
 #include <asm/arch/clock.h>
 #include <asm/arch/dram.h>
 #include <asm/arch/dram_dw_helpers.h>
@@ -22,6 +33,12 @@
 #include <asm/arch/prcm.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
+
+#define H616_DRAM_STRAP_GPIO_COUNT	4
+
+#if H616_GPIO_SELECT_ENABLED
+DECLARE_GLOBAL_DATA_PTR;
+#endif
 
 enum {
 	MBUS_QOS_LOWEST = 0,
@@ -227,45 +244,67 @@ static void mctl_set_addrmap(const struct dram_config *config)
 	mctl_ctl->addrmap[8] = 0x3F3F;
 }
 
+#define H616_PHY_INIT_LEN	27
+
 #ifdef CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1
-static const u8 phy_init[] = {
-#ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+static const u8 phy_init_ddr3[H616_PHY_INIT_LEN] = {
 	0x08, 0x02, 0x12, 0x05, 0x15, 0x17, 0x18, 0x0b,
 	0x14, 0x07, 0x04, 0x13, 0x0c, 0x00, 0x16, 0x1a,
 	0x0a, 0x11, 0x03, 0x10, 0x0e, 0x01, 0x0d, 0x19,
 	0x06, 0x09, 0x0f
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
+};
+
+static const u8 phy_init_lpddr3[H616_PHY_INIT_LEN] = {
 	0x18, 0x00, 0x04, 0x09, 0x06, 0x05, 0x02, 0x19,
 	0x17, 0x03, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
 	0x08, 0x01, 0x1a
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
+};
+
+static const u8 phy_init_lpddr4[H616_PHY_INIT_LEN] = {
 	0x03, 0x00, 0x17, 0x05, 0x02, 0x19, 0x06, 0x07,
 	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
 	0x18, 0x04, 0x1a
-#endif
 };
-#else /* CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_0 */
-static const u8 phy_init[] = {
-#ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+#else
+static const u8 phy_init_ddr3[H616_PHY_INIT_LEN] = {
 	0x07, 0x0b, 0x02, 0x16, 0x0d, 0x0e, 0x14, 0x19,
 	0x0a, 0x15, 0x03, 0x13, 0x04, 0x0c, 0x10, 0x06,
 	0x0f, 0x11, 0x1a, 0x01, 0x12, 0x17, 0x00, 0x08,
 	0x09, 0x05, 0x18
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
+};
+
+static const u8 phy_init_lpddr3[H616_PHY_INIT_LEN] = {
 	0x18, 0x06, 0x00, 0x05, 0x04, 0x03, 0x09, 0x02,
 	0x08, 0x01, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
 	0x17, 0x19, 0x1a
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
+};
+
+static const u8 phy_init_lpddr4[H616_PHY_INIT_LEN] = {
 	0x02, 0x00, 0x17, 0x05, 0x04, 0x19, 0x06, 0x07,
 	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
 	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
 	0x18, 0x03, 0x1a
-#endif
 };
-#endif /* CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_0 */
+#endif
+
+static const u8 *h616_get_phy_init(const struct dram_para *para)
+{
+	switch (para->type) {
+	case SUNXI_DRAM_TYPE_DDR3:
+		return phy_init_ddr3;
+	case SUNXI_DRAM_TYPE_LPDDR3:
+		return phy_init_lpddr3;
+	case SUNXI_DRAM_TYPE_LPDDR4:
+		return phy_init_lpddr4;
+	case SUNXI_DRAM_TYPE_DDR4:
+	default:
+		panic("Unsupported H616 DRAM type: %u\n", para->type);
+	}
+}
+
 #define MASK_BYTE(reg, nr) (((reg) >> ((nr) * 8)) & 0x1f)
 static void mctl_phy_configure_odt(const struct dram_para *para)
 {
@@ -908,6 +947,7 @@ static bool mctl_phy_init(const struct dram_para *para,
 			(struct sunxi_mctl_com_reg *)SUNXI_DRAM_COM_BASE;
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
+	const u8 *phy_init = h616_get_phy_init(para);
 	u32 val, val2, *ptr, mr0, mr2;
 	int i;
 
@@ -964,7 +1004,7 @@ static bool mctl_phy_init(const struct dram_para *para,
 	writel(val2, SUNXI_DRAM_PHY0_BASE + 0x37c);
 
 	ptr = (u32 *)(SUNXI_DRAM_PHY0_BASE + 0xc0);
-	for (i = 0; i < ARRAY_SIZE(phy_init); i++)
+	for (i = 0; i < H616_PHY_INIT_LEN; i++)
 		writel(phy_init[i], &ptr[i]);
 
 	if (para->tpr10 & TPR10_CA_BIT_DELAY)
@@ -1319,32 +1359,301 @@ bool mctl_core_init(const struct dram_para *para,
 	return mctl_ctrl_init(para, config);
 }
 
-static const struct dram_para para = {
-	.clk = CONFIG_DRAM_CLK,
+#if H616_GPIO_SELECT_ENABLED
+static int h616_fdt_read_u32(const void *blob, int node, const char *prop_name,
+			     u32 *val)
+{
+	const fdt32_t *prop;
+	int len;
+
+	prop = fdt_getprop(blob, node, prop_name, &len);
+	if (!prop || len != sizeof(*prop))
+		return -EINVAL;
+
+	*val = fdt32_to_cpu(*prop);
+
+	return 0;
+}
+
+static int h616_fdt_read_dram_type(const void *blob, int node, u32 *val)
+{
+	const char *prop;
+	int len;
+
+	prop = fdt_getprop(blob, node, "allwinner,dram-type", &len);
+	if (!prop)
+		return -EINVAL;
+
+	if (len == sizeof(fdt32_t)) {
+		*val = fdt32_to_cpu(*(const fdt32_t *)prop);
+		return 0;
+	}
+
+	if (len <= 0 || prop[len - 1] != '\0')
+		return -EINVAL;
+
+	if (!strcmp(prop, "ddr3")) {
+		*val = SUNXI_DRAM_TYPE_DDR3;
+		return 0;
+	}
+	if (!strcmp(prop, "ddr4")) {
+		*val = SUNXI_DRAM_TYPE_DDR4;
+		return 0;
+	}
+	if (!strcmp(prop, "lpddr3")) {
+		*val = SUNXI_DRAM_TYPE_LPDDR3;
+		return 0;
+	}
+	if (!strcmp(prop, "lpddr4")) {
+		*val = SUNXI_DRAM_TYPE_LPDDR4;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static int h616_get_strap_gpio(u32 bank, u32 pin)
+{
+	if (pin >= SUNXI_GPIOS_PER_BANK)
+		return -EINVAL;
+
+	switch (bank) {
+	case SUNXI_GPIO_A:
+		return SUNXI_GPA(pin);
+	case SUNXI_GPIO_B:
+		return SUNXI_GPB(pin);
+	case SUNXI_GPIO_C:
+		return SUNXI_GPC(pin);
+	case SUNXI_GPIO_D:
+		return SUNXI_GPD(pin);
+	case SUNXI_GPIO_E:
+		return SUNXI_GPE(pin);
+	case SUNXI_GPIO_F:
+		return SUNXI_GPF(pin);
+	case SUNXI_GPIO_G:
+		return SUNXI_GPG(pin);
+	case SUNXI_GPIO_H:
+		return SUNXI_GPH(pin);
+	case SUNXI_GPIO_I:
+		return SUNXI_GPI(pin);
+	case SUNXI_GPIO_L:
+		return SUNXI_GPL(pin);
+	case SUNXI_GPIO_M:
+		return SUNXI_GPM(pin);
+	case SUNXI_GPIO_N:
+		return SUNXI_GPN(pin);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int h616_fdt_get_gpio_spec(const void *blob, int node,
+				  const char *prop_name, int index,
+				  u32 *bank, u32 *pin)
+{
+	const fdt32_t *prop;
+	int entries, gpio_node, i, len, pos;
+	u32 cells, phandle;
+
+	prop = fdt_getprop(blob, node, prop_name, &len);
+	if (!prop)
+		return -ENOENT;
+	if (len % sizeof(*prop))
+		return -EINVAL;
+
+	entries = len / sizeof(*prop);
+	for (i = 0, pos = 0; pos < entries; i++) {
+		phandle = fdt32_to_cpu(prop[pos++]);
+		if (!phandle)
+			break;
+
+		gpio_node = fdt_node_offset_by_phandle(blob, phandle);
+		if (gpio_node < 0)
+			return gpio_node;
+		if (h616_fdt_read_u32(blob, gpio_node, "#gpio-cells", &cells))
+			return -EINVAL;
+		if (cells < 2 || pos + cells > entries)
+			return -EINVAL;
+
+		if (i == index) {
+			*bank = fdt32_to_cpu(prop[pos]);
+			*pin = fdt32_to_cpu(prop[pos + 1]);
+			return 0;
+		}
+
+		pos += cells;
+	}
+
+	return -ENOENT;
+}
+
+static int h616_parse_dram_para(const void *blob, int node,
+				struct dram_para *para)
+{
+	u32 val;
+
+	if (h616_fdt_read_u32(blob, node, "allwinner,dram-clk", &para->clk))
+		return -EINVAL;
+	if (h616_fdt_read_dram_type(blob, node, &val))
+		return -EINVAL;
+
+	switch (val) {
+	case SUNXI_DRAM_TYPE_DDR3:
+	case SUNXI_DRAM_TYPE_LPDDR3:
+	case SUNXI_DRAM_TYPE_LPDDR4:
+		para->type = val;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (h616_fdt_read_u32(blob, node, "allwinner,dx-odt", &para->dx_odt))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,dx-dri", &para->dx_dri))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,ca-dri", &para->ca_dri))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,odt-en", &para->odt_en))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr0", &para->tpr0))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr2", &para->tpr2))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr6", &para->tpr6))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr10", &para->tpr10))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr11", &para->tpr11))
+		return -EINVAL;
+	if (h616_fdt_read_u32(blob, node, "allwinner,tpr12", &para->tpr12))
+		return -EINVAL;
+
+	return 0;
+}
+
+static int h616_load_dram_profile(u32 profile_id, struct dram_para *para)
+{
+	const void *blob = gd->fdt_blob;
+	int node, profiles;
+	u32 reg;
+
+	profiles = fdt_path_offset(blob, "/dram-profiles");
+	if (profiles < 0)
+		return profiles;
+
+	for (node = fdt_first_subnode(blob, profiles);
+	     node >= 0;
+	     node = fdt_next_subnode(blob, node)) {
+		if (h616_fdt_read_u32(blob, node, "reg", &reg))
+			continue;
+		if (reg != profile_id)
+			continue;
+
+		return h616_parse_dram_para(blob, node, para);
+	}
+
+	return -ENOENT;
+}
+
+static int h616_get_dram_profile_id(u32 *profile_id)
+{
+	const void *blob = gd->fdt_blob;
+	int gpio, i, profiles, ret, value;
+	u32 bank, pin;
+
+	profiles = fdt_path_offset(blob, "/dram-profiles");
+	if (profiles < 0)
+		return profiles;
+
+	*profile_id = 0;
+	for (i = 0; i < H616_DRAM_STRAP_GPIO_COUNT; i++) {
+		ret = h616_fdt_get_gpio_spec(blob, profiles,
+					     "allwinner,dram-coding-gpios",
+					     i, &bank, &pin);
+		if (ret == -ENOENT)
+			return i ? 0 : -ENOENT;
+		if (ret)
+			return ret;
+
+		gpio = h616_get_strap_gpio(bank, pin);
+		if (gpio < 0)
+			return gpio;
+
+		ret = gpio_request(gpio, "h616_dram_sel");
+		if (ret)
+			return ret;
+
+		ret = gpio_direction_input(gpio);
+		if (ret) {
+			gpio_free(gpio);
+			return ret;
+		}
+
+		value = gpio_get_value(gpio);
+		gpio_free(gpio);
+		if (value < 0)
+			return value;
+
+		*profile_id |= !!value << i;
+	}
+
+	return 0;
+}
+
+static void h616_get_dram_para(struct dram_para *para)
+{
+	u32 profile_id;
+	int ret;
+
+	ret = h616_get_dram_profile_id(&profile_id);
+	if (ret)
+		panic("H616 GPIO DRAM profile selection could not determine a profile\n");
+
+	ret = h616_load_dram_profile(profile_id, para);
+	if (ret)
+		panic("H616 GPIO DRAM profile selection failed to load profile %u\n",
+		      profile_id);
+}
+#else
+static enum sunxi_dram_type h616_get_fixed_dram_type(void)
+{
 #ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
-	.type = SUNXI_DRAM_TYPE_DDR3,
+	return SUNXI_DRAM_TYPE_DDR3;
 #elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
-	.type = SUNXI_DRAM_TYPE_LPDDR3,
+	return SUNXI_DRAM_TYPE_LPDDR3;
 #elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
-	.type = SUNXI_DRAM_TYPE_LPDDR4,
+	return SUNXI_DRAM_TYPE_LPDDR4;
 #endif
-	.dx_odt = CONFIG_DRAM_SUNXI_DX_ODT,
-	.dx_dri = CONFIG_DRAM_SUNXI_DX_DRI,
-	.ca_dri = CONFIG_DRAM_SUNXI_CA_DRI,
-	.odt_en = CONFIG_DRAM_SUNXI_ODT_EN,
-	.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
-	.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
-	.tpr6 = CONFIG_DRAM_SUNXI_TPR6,
-	.tpr10 = CONFIG_DRAM_SUNXI_TPR10,
-	.tpr11 = CONFIG_DRAM_SUNXI_TPR11,
-	.tpr12 = CONFIG_DRAM_SUNXI_TPR12,
-};
+	panic("No fixed H616 DRAM type selected\n");
+}
+
+static void h616_get_dram_para(struct dram_para *para)
+{
+	*para = (struct dram_para) {
+		.clk = CONFIG_DRAM_CLK,
+		.type = h616_get_fixed_dram_type(),
+		.dx_odt = CONFIG_DRAM_SUNXI_DX_ODT,
+		.dx_dri = CONFIG_DRAM_SUNXI_DX_DRI,
+		.ca_dri = CONFIG_DRAM_SUNXI_CA_DRI,
+		.odt_en = CONFIG_DRAM_SUNXI_ODT_EN,
+		.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
+		.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
+		.tpr6 = CONFIG_DRAM_SUNXI_TPR6,
+		.tpr10 = CONFIG_DRAM_SUNXI_TPR10,
+		.tpr11 = CONFIG_DRAM_SUNXI_TPR11,
+		.tpr12 = CONFIG_DRAM_SUNXI_TPR12,
+	};
+}
+#endif
 
 unsigned long sunxi_dram_init(void)
 {
 	void *const prcm = (void *)SUNXI_PRCM_BASE;
+	struct dram_para para;
 	struct dram_config config;
 	unsigned long size;
+
+	h616_get_dram_para(&para);
 
 	setbits_le32(prcm + CCU_PRCM_RES_CAL_CTRL, BIT(8));
 	clrbits_le32(prcm + CCU_PRCM_OHMS240, 0x3f);
