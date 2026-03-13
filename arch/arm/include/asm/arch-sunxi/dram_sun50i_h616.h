@@ -168,13 +168,49 @@ struct dram_config {
 	u8 bus_full_width;
 };
 
-static inline int ns_to_t(int nanoseconds)
+#define H616_PHY_INIT_LEN	27
+
+struct h616_dram_phy_cfg {
+	u32 training_reg14;
+	u32 training_reg1c;
+	u32 write_leveling_reg0c;
+	u32 write_leveling_reg10;
+	u32 dx_dri_hi;
+	u32 dx_odt_lo;
+	u32 dx_odt_hi;
+	u32 tpr6_val;
+	u32 phy_mode;
+	bool clear_phy_ctl_0x4_80;
+	bool set_lpddr4_dx_odt_mode;
+	bool clear_read_training_regs;
+};
+
+struct h616_dram_backend {
+	u32 mstr_flags;
+	u32 odtcfg;
+	bool set_com_ctl_0x50;
+	const u8 *(*get_phy_init)(void);
+	void (*set_timing_params)(const struct dram_para *para);
+	void (*get_phy_cfg)(const struct dram_para *para,
+			    struct h616_dram_phy_cfg *phy_cfg);
+	void (*program_mode_registers)(const struct dram_para *para,
+				       struct sunxi_mctl_ctl_reg *mctl_ctl);
+	void (*ca_bit_delay_compensation)(const struct dram_para *para,
+					  const struct dram_config *config,
+					  u32 val);
+};
+
+static inline int h616_ns_to_t(const struct dram_para *para, int nanoseconds)
 {
-	const unsigned int ctrl_freq = CONFIG_DRAM_CLK / 2;
+	const unsigned int ctrl_freq = para->clk / 2;
 
 	return DIV_ROUND_UP(ctrl_freq * nanoseconds, 1000);
 }
 
-void mctl_set_timing_params(const struct dram_para *para);
+extern const struct h616_dram_backend h616_ddr3_backend;
+extern const struct h616_dram_backend h616_lpddr3_backend;
+extern const struct h616_dram_backend h616_lpddr4_backend;
+
+const struct h616_dram_backend *h616_get_dram_backend(const struct dram_para *para);
 
 #endif /* _SUNXI_DRAM_SUN50I_H616_H */

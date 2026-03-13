@@ -11,31 +11,54 @@
 
 #include <asm/arch/dram.h>
 #include <asm/arch/cpu.h>
+#include <linux/delay.h>
 
-void mctl_set_timing_params(const struct dram_para *para)
+static const u8 h616_lpddr4_phy_init_default[H616_PHY_INIT_LEN] = {
+	0x02, 0x00, 0x17, 0x05, 0x04, 0x19, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
+	0x18, 0x03, 0x1a
+};
+
+static const u8 h616_lpddr4_phy_init_addr_map_1[H616_PHY_INIT_LEN] = {
+	0x03, 0x00, 0x17, 0x05, 0x02, 0x19, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
+	0x18, 0x04, 0x1a
+};
+
+static const u8 *h616_lpddr4_get_phy_init(void)
+{
+	if (IS_ENABLED(CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1))
+		return h616_lpddr4_phy_init_addr_map_1;
+
+	return h616_lpddr4_phy_init_default;
+}
+
+static void h616_lpddr4_set_timing_params(const struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	u8 tccd		= 4;
-	u8 tfaw		= ns_to_t(40);
-	u8 trrd		= max(ns_to_t(10), 2);
-	u8 trcd		= max(ns_to_t(18), 2);
-	u8 trc		= ns_to_t(65);
-	u8 txp		= max(ns_to_t(8), 2);
+	u8 tfaw		= h616_ns_to_t(para, 40);
+	u8 trrd		= max(h616_ns_to_t(para, 10), 2);
+	u8 trcd		= max(h616_ns_to_t(para, 18), 2);
+	u8 trc		= h616_ns_to_t(para, 65);
+	u8 txp		= max(h616_ns_to_t(para, 8), 2);
 	u8 trtp		= 4;
-	u8 trp		= ns_to_t(21);
-	u8 tras		= ns_to_t(42);
-	u16 trefi	= ns_to_t(3904) / 32;
-	u16 trfc	= ns_to_t(280);
-	u16 txsr	= ns_to_t(190);
+	u8 trp		= h616_ns_to_t(para, 21);
+	u8 tras		= h616_ns_to_t(para, 42);
+	u16 trefi	= h616_ns_to_t(para, 3904) / 32;
+	u16 trfc	= h616_ns_to_t(para, 280);
+	u16 txsr	= h616_ns_to_t(para, 190);
 
-	u8 tmrw		= max(ns_to_t(14), 5);
+	u8 tmrw		= max(h616_ns_to_t(para, 14), 5);
 	u8 tmrd		= tmrw;
 	u8 tmod		= 12;
-	u8 tcke		= max(ns_to_t(15), 2);
-	u8 tcksrx	= max(ns_to_t(2), 2);
-	u8 tcksre	= max(ns_to_t(5), 2);
+	u8 tcke		= max(h616_ns_to_t(para, 15), 2);
+	u8 tcksrx	= max(h616_ns_to_t(para, 2), 2);
+	u8 tcksre	= max(h616_ns_to_t(para, 5), 2);
 	u8 tckesr	= tcke;
 	u8 trasmax	= (trefi * 9) / 32;
 	u8 txs		= 4;
@@ -49,7 +72,7 @@ void mctl_set_timing_params(const struct dram_para *para)
 
 	u8 twtp		= 24;
 	u8 twr2rd	= max(trrd, (u8)4) + 14;
-	u8 trd2wr	= (ns_to_t(4) + 17) - ns_to_t(1);
+	u8 trd2wr	= (h616_ns_to_t(para, 4) + 17) - h616_ns_to_t(para, 1);
 
 	/* set DRAM timing */
 	writel((twtp << 24) | (tfaw << 16) | (trasmax << 8) | tras,
@@ -92,3 +115,68 @@ void mctl_set_timing_params(const struct dram_para *para)
 	/* set refresh timing */
 	writel((trefi << 16) | trfc, &mctl_ctl->rfshtmg);
 }
+
+static void h616_lpddr4_get_phy_cfg(const struct dram_para *para,
+				    struct h616_dram_phy_cfg *phy_cfg)
+{
+	phy_cfg->training_reg14 = 20;
+	phy_cfg->training_reg1c = 10;
+	phy_cfg->write_leveling_reg0c = 0x1b;
+	phy_cfg->write_leveling_reg10 = 0;
+	phy_cfg->dx_dri_hi = 0x04040404;
+	phy_cfg->dx_odt_lo = para->dx_odt;
+	phy_cfg->dx_odt_hi = 0;
+	phy_cfg->tpr6_val = (para->tpr6 >> 24) & 0xff;
+	phy_cfg->phy_mode = 0x0d;
+	phy_cfg->clear_phy_ctl_0x4_80 = true;
+	phy_cfg->set_lpddr4_dx_odt_mode = true;
+	phy_cfg->clear_read_training_regs = true;
+}
+
+static void h616_lpddr4_mr_write(struct sunxi_mctl_ctl_reg *mctl_ctl,
+				 u32 mrctrl1)
+{
+	writel(mrctrl1, &mctl_ctl->mrctrl1);
+	udelay(10);
+	writel(0x80000030, &mctl_ctl->mrctrl0);
+	udelay(10);
+	mctl_await_completion(&mctl_ctl->mrctrl0, BIT(31), 0);
+}
+
+static void h616_lpddr4_program_mode_registers(const struct dram_para *para,
+					       struct sunxi_mctl_ctl_reg *mctl_ctl)
+{
+	(void)para;
+
+	h616_lpddr4_mr_write(mctl_ctl, 0x0);
+	h616_lpddr4_mr_write(mctl_ctl, 0x134);
+	h616_lpddr4_mr_write(mctl_ctl, 0x21b);
+	h616_lpddr4_mr_write(mctl_ctl, 0x333);
+	h616_lpddr4_mr_write(mctl_ctl, 0x403);
+	h616_lpddr4_mr_write(mctl_ctl, 0xb04);
+	h616_lpddr4_mr_write(mctl_ctl, 0xc72);
+	h616_lpddr4_mr_write(mctl_ctl, 0xe09);
+	h616_lpddr4_mr_write(mctl_ctl, 0x1624);
+}
+
+static void h616_lpddr4_ca_bit_delay_compensation(const struct dram_para *para,
+						  const struct dram_config *config,
+						  u32 val)
+{
+	writel(val, SUNXI_DRAM_PHY0_BASE + 0x788);
+	if (config->ranks == 2) {
+		val = (para->tpr10 >> 11) & 0x1e;
+		writel(val, SUNXI_DRAM_PHY0_BASE + 0x794);
+	}
+}
+
+const struct h616_dram_backend h616_lpddr4_backend = {
+	.mstr_flags = MSTR_BURST_LENGTH(16) | MSTR_DEVICETYPE_LPDDR4,
+	.odtcfg = 0x04000400,
+	.set_com_ctl_0x50 = true,
+	.get_phy_init = h616_lpddr4_get_phy_init,
+	.set_timing_params = h616_lpddr4_set_timing_params,
+	.get_phy_cfg = h616_lpddr4_get_phy_cfg,
+	.program_mode_registers = h616_lpddr4_program_mode_registers,
+	.ca_bit_delay_compensation = h616_lpddr4_ca_bit_delay_compensation,
+};
