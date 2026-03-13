@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause */
+
+#ifndef _DT_BINDINGS_MEMORY_SUNXI_DRAM_H
+#define _DT_BINDINGS_MEMORY_SUNXI_DRAM_H
+
+#define SUNXI_DRAM_TYPE_DDR3		3
+#define SUNXI_DRAM_TYPE_DDR4		4
+#define SUNXI_DRAM_TYPE_LPDDR3		7
+#define SUNXI_DRAM_TYPE_LPDDR4		8
+
+#endif
