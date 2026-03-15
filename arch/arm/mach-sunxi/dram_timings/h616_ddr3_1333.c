@@ -14,33 +14,55 @@
 #include <asm/arch/dram.h>
 #include <asm/arch/cpu.h>
 
-void mctl_set_timing_params(const struct dram_para *para)
+static const u8 h616_ddr3_phy_init_default[H616_PHY_INIT_LEN] = {
+	0x07, 0x0b, 0x02, 0x16, 0x0d, 0x0e, 0x14, 0x19,
+	0x0a, 0x15, 0x03, 0x13, 0x04, 0x0c, 0x10, 0x06,
+	0x0f, 0x11, 0x1a, 0x01, 0x12, 0x17, 0x00, 0x08,
+	0x09, 0x05, 0x18
+};
+
+static const u8 h616_ddr3_phy_init_addr_map_1[H616_PHY_INIT_LEN] = {
+	0x08, 0x02, 0x12, 0x05, 0x15, 0x17, 0x18, 0x0b,
+	0x14, 0x07, 0x04, 0x13, 0x0c, 0x00, 0x16, 0x1a,
+	0x0a, 0x11, 0x03, 0x10, 0x0e, 0x01, 0x0d, 0x19,
+	0x06, 0x09, 0x0f
+};
+
+const u8 *h616_ddr3_get_phy_init(void)
+{
+	if (IS_ENABLED(CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1))
+		return h616_ddr3_phy_init_addr_map_1;
+
+	return h616_ddr3_phy_init_default;
+}
+
+void h616_ddr3_set_timing_params(const struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	u8 tccd		= 2;			/* JEDEC: 4nCK */
-	u8 tfaw		= ns_to_t(50);		/* JEDEC: 30 ns w/ 1K pages */
-	u8 trrd		= max(ns_to_t(6), 4);	/* JEDEC: max(6 ns, 4nCK) */
-	u8 trcd		= ns_to_t(15);		/* JEDEC: 13.5 ns */
-	u8 trc		= ns_to_t(53);		/* JEDEC: 49.5 ns */
-	u8 txp		= max(ns_to_t(6), 3);	/* JEDEC: max(6 ns, 3nCK) */
-	u8 trtp		= max(ns_to_t(8), 2);	/* JEDEC: max(7.5 ns, 4nCK) */
-	u8 trp		= ns_to_t(15);		/* JEDEC: >= 13.75 ns */
-	u8 tras		= ns_to_t(38);		/* JEDEC >= 36 ns, <= 9*trefi */
-	u16 trefi	= ns_to_t(7800) / 32;	/* JEDEC: 7.8us@Tcase <= 85C */
-	u16 trfc	= ns_to_t(350);		/* JEDEC: 160 ns for 2Gb */
+	u8 tfaw		= ns_to_t(para, 50);	/* JEDEC: 30 ns w/ 1K pages */
+	u8 trrd		= max(ns_to_t(para, 6), 4); /* JEDEC: max(6 ns, 4nCK) */
+	u8 trcd		= ns_to_t(para, 15);	/* JEDEC: 13.5 ns */
+	u8 trc		= ns_to_t(para, 53);	/* JEDEC: 49.5 ns */
+	u8 txp		= max(ns_to_t(para, 6), 3); /* JEDEC: max(6 ns, 3nCK) */
+	u8 trtp		= max(ns_to_t(para, 8), 2); /* JEDEC: max(7.5 ns, 4nCK) */
+	u8 trp		= ns_to_t(para, 15);	/* JEDEC: >= 13.75 ns */
+	u8 tras		= ns_to_t(para, 38);	/* JEDEC >= 36 ns, <= 9*trefi */
+	u16 trefi	= ns_to_t(para, 7800) / 32; /* JEDEC: 7.8us@Tcase <= 85C */
+	u16 trfc	= ns_to_t(para, 350);	/* JEDEC: 160 ns for 2Gb */
 	u16 txsr	= 4;			/* ? */
 
 	u8 tmrw		= 0;			/* ? */
 	u8 tmrd		= 4;			/* JEDEC: 4nCK */
-	u8 tmod		= max(ns_to_t(15), 12);	/* JEDEC: max(15 ns, 12nCK) */
-	u8 tcke		= max(ns_to_t(6), 3);	/* JEDEC: max(5.625 ns, 3nCK) */
-	u8 tcksrx	= max(ns_to_t(10), 4);	/* JEDEC: max(10 ns, 5nCK) */
-	u8 tcksre	= max(ns_to_t(10), 4);	/* JEDEC: max(10 ns, 5nCK) */
+	u8 tmod		= max(ns_to_t(para, 15), 12); /* JEDEC: max(15 ns, 12nCK) */
+	u8 tcke		= max(ns_to_t(para, 6), 3); /* JEDEC: max(5.625 ns, 3nCK) */
+	u8 tcksrx	= max(ns_to_t(para, 10), 4); /* JEDEC: max(10 ns, 5nCK) */
+	u8 tcksre	= max(ns_to_t(para, 10), 4); /* JEDEC: max(10 ns, 5nCK) */
 	u8 tckesr	= tcke + 1;		/* JEDEC: tCKE(min) + 1nCK */
 	u8 trasmax	= (para->clk / 2) / 15;	/* JEDEC: tREFI * 9 */
-	u8 txs		= ns_to_t(360) / 32;	/* JEDEC: max(5nCK,tRFC+10ns) */
+	u8 txs		= ns_to_t(para, 360) / 32; /* JEDEC: max(5nCK,tRFC+10ns) */
 	u8 txsdll	= 16;			/* JEDEC: 512 nCK */
 	u8 txsabort	= 4;			/* ? */
 	u8 txsfast	= 4;			/* ? */

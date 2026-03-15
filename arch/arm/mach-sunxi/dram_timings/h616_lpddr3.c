@@ -14,33 +14,55 @@
 #include <asm/arch/dram.h>
 #include <asm/arch/cpu.h>
 
-void mctl_set_timing_params(const struct dram_para *para)
+static const u8 h616_lpddr3_phy_init_default[H616_PHY_INIT_LEN] = {
+	0x18, 0x06, 0x00, 0x05, 0x04, 0x03, 0x09, 0x02,
+	0x08, 0x01, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
+	0x17, 0x19, 0x1a
+};
+
+static const u8 h616_lpddr3_phy_init_addr_map_1[H616_PHY_INIT_LEN] = {
+	0x18, 0x00, 0x04, 0x09, 0x06, 0x05, 0x02, 0x19,
+	0x17, 0x03, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
+	0x08, 0x01, 0x1a
+};
+
+const u8 *h616_lpddr3_get_phy_init(void)
+{
+	if (IS_ENABLED(CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1))
+		return h616_lpddr3_phy_init_addr_map_1;
+
+	return h616_lpddr3_phy_init_default;
+}
+
+void h616_lpddr3_set_timing_params(const struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
 
 	u8 tccd		= 2;
-	u8 tfaw		= ns_to_t(50);
-	u8 trrd		= max(ns_to_t(6), 4);
-	u8 trcd		= ns_to_t(24);
-	u8 trc		= ns_to_t(70);
-	u8 txp		= max(ns_to_t(8), 3);
-	u8 trtp		= max(ns_to_t(8), 2);
-	u8 trp		= ns_to_t(27);
-	u8 tras		= ns_to_t(41);
-	u16 trefi	= ns_to_t(7800) / 64;
-	u16 trfc	= ns_to_t(210);
+	u8 tfaw		= ns_to_t(para, 50);
+	u8 trrd		= max(ns_to_t(para, 6), 4);
+	u8 trcd		= ns_to_t(para, 24);
+	u8 trc		= ns_to_t(para, 70);
+	u8 txp		= max(ns_to_t(para, 8), 3);
+	u8 trtp		= max(ns_to_t(para, 8), 2);
+	u8 trp		= ns_to_t(para, 27);
+	u8 tras		= ns_to_t(para, 41);
+	u16 trefi	= ns_to_t(para, 7800) / 64;
+	u16 trfc	= ns_to_t(para, 210);
 	u16 txsr	= 88;
 
 	u8 tmrw		= 5;
 	u8 tmrd		= 5;
-	u8 tmod		= max(ns_to_t(15), 12);
-	u8 tcke		= max(ns_to_t(6), 3);
-	u8 tcksrx	= max(ns_to_t(12), 4);
-	u8 tcksre	= max(ns_to_t(12), 4);
+	u8 tmod		= max(ns_to_t(para, 15), 12);
+	u8 tcke		= max(ns_to_t(para, 6), 3);
+	u8 tcksrx	= max(ns_to_t(para, 12), 4);
+	u8 tcksre	= max(ns_to_t(para, 12), 4);
 	u8 tckesr	= tcke + 2;
 	u8 trasmax	= (para->clk / 2) / 16;
-	u8 txs		= ns_to_t(360) / 32;
+	u8 txs		= ns_to_t(para, 360) / 32;
 	u8 txsdll	= 16;
 	u8 txsabort	= 4;
 	u8 txsfast	= 4;
