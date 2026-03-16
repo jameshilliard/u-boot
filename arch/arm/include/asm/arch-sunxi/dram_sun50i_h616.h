@@ -168,6 +168,8 @@ struct dram_config {
 	u8 bus_full_width;
 };
 
+#define H616_PHY_INIT_LEN	27
+
 static inline int ns_to_t(const struct dram_para *para, int nanoseconds)
 {
 	const unsigned int ctrl_freq = para->clk / 2;
@@ -175,6 +177,7 @@ static inline int ns_to_t(const struct dram_para *para, int nanoseconds)
 	return DIV_ROUND_UP(ctrl_freq * nanoseconds, 1000);
 }
 
+extern const u8 *phy_init;
 void mctl_set_timing_params(const struct dram_para *para);
 
 #endif /* _SUNXI_DRAM_SUN50I_H616_H */
