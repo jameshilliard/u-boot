@@ -177,7 +177,37 @@ static inline int ns_to_t(const struct dram_para *para, int nanoseconds)
 	return DIV_ROUND_UP(ctrl_freq * nanoseconds, 1000);
 }
 
-extern const u8 *phy_init;
-void mctl_set_timing_params(const struct dram_para *para);
+void h616_ddr3_set_timing_params(const struct dram_para *para);
+void h616_lpddr3_set_timing_params(const struct dram_para *para);
+void h616_lpddr4_set_timing_params(const struct dram_para *para);
+
+const u8 *h616_ddr3_get_phy_init(void);
+const u8 *h616_lpddr3_get_phy_init(void);
+const u8 *h616_lpddr4_get_phy_init(void);
+
+static inline void mctl_set_timing_params(const struct dram_para *para)
+{
+#ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+	h616_ddr3_set_timing_params(para);
+#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
+	h616_lpddr3_set_timing_params(para);
+#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
+	h616_lpddr4_set_timing_params(para);
+#endif
+}
+
+static inline const u8 *h616_get_phy_init(const struct dram_para *para)
+{
+	(void)para;
+
+#ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+	return h616_ddr3_get_phy_init();
+#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
+	return h616_lpddr3_get_phy_init();
+#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
+	return h616_lpddr4_get_phy_init();
+#endif
+	return NULL;
+}
 
 #endif /* _SUNXI_DRAM_SUN50I_H616_H */

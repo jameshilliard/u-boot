@@ -869,6 +869,7 @@ static bool mctl_phy_init(const struct dram_para *para,
 			(struct sunxi_mctl_com_reg *)SUNXI_DRAM_COM_BASE;
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
+	const u8 *phy_init = h616_get_phy_init(para);
 	u32 val, val2, *ptr, mr0, mr2;
 	int i;
 

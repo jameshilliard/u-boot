@@ -28,11 +28,15 @@ static const u8 h616_lpddr3_phy_init_addr_map_1[H616_PHY_INIT_LEN] = {
 	0x08, 0x01, 0x1a
 };
 
-const u8 *phy_init = IS_ENABLED(CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1) ?
-		     h616_lpddr3_phy_init_addr_map_1 :
-		     h616_lpddr3_phy_init_default;
+const u8 *h616_lpddr3_get_phy_init(void)
+{
+	if (IS_ENABLED(CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1))
+		return h616_lpddr3_phy_init_addr_map_1;
 
-void mctl_set_timing_params(const struct dram_para *para)
+	return h616_lpddr3_phy_init_default;
+}
+
+void h616_lpddr3_set_timing_params(const struct dram_para *para)
 {
 	struct sunxi_mctl_ctl_reg * const mctl_ctl =
 			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
