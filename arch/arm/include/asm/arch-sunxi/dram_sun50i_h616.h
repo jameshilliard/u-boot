@@ -170,6 +170,8 @@ struct dram_config {
 
 #define H616_PHY_INIT_LEN	27
 
+void h616_get_dram_para_dt(struct dram_para *para);
+
 static inline int ns_to_t(const struct dram_para *para, int nanoseconds)
 {
 	const unsigned int ctrl_freq = para->clk / 2;
@@ -187,6 +189,22 @@ const u8 *h616_lpddr4_get_phy_init(void);
 
 static inline void mctl_set_timing_params(const struct dram_para *para)
 {
+	if (IS_ENABLED(CONFIG_DRAM_SUN50I_H616_DT_PROFILE)) {
+		switch (para->type) {
+		case SUNXI_DRAM_TYPE_DDR3:
+			h616_ddr3_set_timing_params(para);
+			return;
+		case SUNXI_DRAM_TYPE_LPDDR3:
+			h616_lpddr3_set_timing_params(para);
+			return;
+		case SUNXI_DRAM_TYPE_LPDDR4:
+			h616_lpddr4_set_timing_params(para);
+			return;
+		default:
+			return;
+		}
+	}
+
 #ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
 	h616_ddr3_set_timing_params(para);
 #elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
@@ -198,7 +216,18 @@ static inline void mctl_set_timing_params(const struct dram_para *para)
 
 static inline const u8 *h616_get_phy_init(const struct dram_para *para)
 {
-	(void)para;
+	if (IS_ENABLED(CONFIG_DRAM_SUN50I_H616_DT_PROFILE)) {
+		switch (para->type) {
+		case SUNXI_DRAM_TYPE_DDR3:
+			return h616_ddr3_get_phy_init();
+		case SUNXI_DRAM_TYPE_LPDDR3:
+			return h616_lpddr3_get_phy_init();
+		case SUNXI_DRAM_TYPE_LPDDR4:
+			return h616_lpddr4_get_phy_init();
+		default:
+			return NULL;
+		}
+	}
 
 #ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
 	return h616_ddr3_get_phy_init();

@@ -1281,32 +1281,47 @@ bool mctl_core_init(const struct dram_para *para,
 	return mctl_ctrl_init(para, config);
 }
 
-static const struct dram_para para = {
-	.clk = CONFIG_DRAM_CLK,
-#ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
-	.type = SUNXI_DRAM_TYPE_DDR3,
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR3)
-	.type = SUNXI_DRAM_TYPE_LPDDR3,
-#elif defined(CONFIG_SUNXI_DRAM_H616_LPDDR4)
-	.type = SUNXI_DRAM_TYPE_LPDDR4,
-#endif
-	.dx_odt = CONFIG_DRAM_SUNXI_DX_ODT,
-	.dx_dri = CONFIG_DRAM_SUNXI_DX_DRI,
-	.ca_dri = CONFIG_DRAM_SUNXI_CA_DRI,
-	.odt_en = CONFIG_DRAM_SUNXI_ODT_EN,
-	.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
-	.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
-	.tpr6 = CONFIG_DRAM_SUNXI_TPR6,
-	.tpr10 = CONFIG_DRAM_SUNXI_TPR10,
-	.tpr11 = CONFIG_DRAM_SUNXI_TPR11,
-	.tpr12 = CONFIG_DRAM_SUNXI_TPR12,
-};
+static enum sunxi_dram_type h616_get_fixed_dram_type(void)
+{
+	if (IS_ENABLED(CONFIG_SUNXI_DRAM_H616_DDR3_1333))
+		return SUNXI_DRAM_TYPE_DDR3;
+	if (IS_ENABLED(CONFIG_SUNXI_DRAM_H616_LPDDR3))
+		return SUNXI_DRAM_TYPE_LPDDR3;
+	if (IS_ENABLED(CONFIG_SUNXI_DRAM_H616_LPDDR4))
+		return SUNXI_DRAM_TYPE_LPDDR4;
+
+	panic("No fixed H616 DRAM type selected\n");
+}
+
+static void h616_get_fixed_dram_para(struct dram_para *para)
+{
+	*para = (struct dram_para) {
+		.clk = CONFIG_DRAM_CLK,
+		.type = h616_get_fixed_dram_type(),
+		.dx_odt = CONFIG_DRAM_SUNXI_DX_ODT,
+		.dx_dri = CONFIG_DRAM_SUNXI_DX_DRI,
+		.ca_dri = CONFIG_DRAM_SUNXI_CA_DRI,
+		.odt_en = CONFIG_DRAM_SUNXI_ODT_EN,
+		.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
+		.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
+		.tpr6 = CONFIG_DRAM_SUNXI_TPR6,
+		.tpr10 = CONFIG_DRAM_SUNXI_TPR10,
+		.tpr11 = CONFIG_DRAM_SUNXI_TPR11,
+		.tpr12 = CONFIG_DRAM_SUNXI_TPR12,
+	};
+}
 
 unsigned long sunxi_dram_init(void)
 {
 	void *const prcm = (void *)SUNXI_PRCM_BASE;
+	struct dram_para para;
 	struct dram_config config;
 	unsigned long size;
+
+	if (IS_ENABLED(CONFIG_DRAM_SUN50I_H616_DT_PROFILE))
+		h616_get_dram_para_dt(&para);
+	else
+		h616_get_fixed_dram_para(&para);
 
 	setbits_le32(prcm + CCU_PRCM_RES_CAL_CTRL, BIT(8));
 	clrbits_le32(prcm + CCU_PRCM_OHMS240, 0x3f);
