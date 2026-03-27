@@ -1473,10 +1473,62 @@ static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 	struct sunxi_nfc *nfc = to_sunxi_nfc(sunxi_nand->nand.controller);
 	struct sunxi_nand_hw_ecc *data;
 	struct nand_ecclayout *layout;
+	const u8 *strengths = nfc->caps->ecc_strengths;
 	unsigned int total_user_data_sz = 0;
 	int nsectors;
 	int ret;
 	int i;
+
+	if (nand->ecc.options & NAND_ECC_MAXIMIZE) {
+		int bytes = mtd->oobsize;
+
+		ecc->size = 1024;
+		nsectors = mtd->writesize / ecc->size;
+
+		if (!nfc->caps->reg_user_data_len) {
+			/*
+			 * If there's a fixed user data length, subtract it before
+			 * computing the max ECC strength
+			 */
+
+			for (i = 0; i < nsectors; i++)
+				total_user_data_sz += sunxi_nfc_user_data_sz(sunxi_nand, i);
+
+			/*
+			 * The 2 BBM bytes should not be removed from the grand total,
+			 * because they are part of the USER_DATA_SZ.
+			 */
+			bytes -= total_user_data_sz;
+		} else {
+			/*
+			 * remove at least the BBM size before computing the
+			 * max ECC
+			 */
+			bytes -= 2;
+		}
+
+		/*
+		 * Once all user data has been subtracted, the rest can be used
+		 * for ECC bytes
+		 */
+		bytes /= nsectors;
+
+		/* and bytes has to be even. */
+		if (bytes % 2)
+			bytes--;
+
+		ecc->strength = bytes * 8 / fls(8 * ecc->size);
+
+		for (i = 0; i < nfc->caps->nstrengths; i++) {
+			if (strengths[i] > ecc->strength)
+				break;
+		}
+
+		if (!i)
+			ecc->strength = 0;
+		else
+			ecc->strength = strengths[i - 1];
+	}
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
