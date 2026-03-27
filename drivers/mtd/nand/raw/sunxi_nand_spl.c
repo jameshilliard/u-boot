@@ -284,7 +284,7 @@ static u8 nand_user_data_sz(const struct nfc_config *conf, int step)
 	if (!conf->user_data_bytes)
 		return USER_DATA_SZ;
 
-	return conf->user_data_bytes[step];
+	return step ? 0 : 8;
 }
 
 static int nand_read_page(const struct nfc_config *conf, u32 offs,
