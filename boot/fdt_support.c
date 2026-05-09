@@ -975,19 +975,26 @@ static int fdt_node_set_part_info(void *blob, int parent_offset,
 		return ret;
 
 	/*
-	 * Check if size/address is 1 or 2 cells.
-	 * We assume #address-cells and #size-cells have same value.
-	 */
-	sizecell = fdt_getprop_u32_default_node(blob, parent_offset,
-						0, "#size-cells", 1);
-
-	/*
 	 * Check if it is nand {}; subnode, adjust
 	 * the offset in this case
 	 */
 	off = fdt_next_node(blob, parent_offset, &ndepth);
 	if (off > 0 && ndepth == 1)
 		parent_offset = off;
+
+	/* Use the standard fixed-partitions container when one is present. */
+	off = fdt_subnode_offset(blob, parent_offset, "partitions");
+	if (off >= 0)
+		parent_offset = off;
+	else if (off != -FDT_ERR_NOTFOUND)
+		return off;
+
+	/*
+	 * Check if size/address is 1 or 2 cells.
+	 * We assume #address-cells and #size-cells have same value.
+	 */
+	sizecell = fdt_getprop_u32_default_node(blob, parent_offset,
+						0, "#size-cells", 1);
 
 	part_num = 0;
 	list_for_each_prev(pentry, &dev->parts) {

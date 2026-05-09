@@ -52,8 +52,235 @@
 #include <spl.h>
 #include <sy8106a.h>
 #include <asm/setup.h>
+#include <vsprintf.h>
+
+#include "nand_secure_storage.h"
 
 DECLARE_GLOBAL_DATA_PTR;
+
+#if IS_ENABLED(CONFIG_SYS_MTDPARTS_RUNTIME) && !defined(CONFIG_XPL_BUILD)
+#define SUNXI_NAND_MTDIDS_MAXLEN	128
+#define SUNXI_NAND_MTDPARTS_MAXLEN	512
+
+static int sunxi_mtdparts_append(char *buf, size_t size, int *len,
+				 const char *fmt, ...)
+{
+	size_t avail;
+	va_list args;
+	int ret;
+
+	if (*len < 0 || (size_t)*len >= size)
+		return -ENOSPC;
+
+	avail = size - (size_t)*len;
+	va_start(args, fmt);
+	ret = vsnprintf(buf + *len, avail, fmt, args);
+	va_end(args);
+	if (ret < 0 || (size_t)ret >= avail)
+		return -ENOSPC;
+
+	*len += ret;
+	return 0;
+}
+
+static int sunxi_mtdparts_add(char *buf, size_t size, int *len,
+			      const char *name, u64 part_size, u64 offset,
+			      bool ro)
+{
+	return sunxi_mtdparts_append(buf, size, len, "0x%llx@0x%llx(%s)%s,",
+				    (unsigned long long)part_size,
+				    (unsigned long long)offset, name,
+				    ro ? "ro" : "");
+}
+
+void board_mtdparts_default(const char **mtdids, const char **mtdparts)
+{
+	static char ids[SUNXI_NAND_MTDIDS_MAXLEN];
+	static char parts[SUNXI_NAND_MTDPARTS_MAXLEN];
+	static bool generated;
+	struct sunxi_nand_secure_storage_info ss;
+	u32 i;
+	int len, ret;
+
+	*mtdids = NULL;
+	*mtdparts = NULL;
+
+	if (!IS_ENABLED(CONFIG_SUNXI_NAND_SECURE_STORAGE_MTD_PARTS))
+		return;
+
+	if (generated) {
+		*mtdids = ids;
+		*mtdparts = parts;
+		return;
+	}
+
+	ret = sunxi_nand_secure_storage_locate(&ss);
+	if (ret) {
+		debug("sunxi secure storage: no dynamic mtdparts: %d\n", ret);
+		return;
+	}
+
+	if (!ss.mtd_name || !ss.mtd_size || !ss.spl_copy_size ||
+	    !ss.spl_copy_count || !ss.uboot_size || !ss.secure_size) {
+		debug("sunxi secure storage: invalid dynamic mtdparts geometry\n");
+		return;
+	}
+
+	if (ss.uboot_offset + ss.uboot_size > ss.secure_offset ||
+	    ss.secure_end >= ss.mtd_size) {
+		debug("sunxi secure storage: dynamic mtdparts would overlap\n");
+		return;
+	}
+
+	len = snprintf(ids, sizeof(ids), "nand0=%s", ss.mtd_name);
+	if (len < 0 || len >= sizeof(ids))
+		return;
+
+	len = snprintf(parts, sizeof(parts), "%s:", ss.mtd_name);
+	if (len < 0 || len >= sizeof(parts))
+		goto err;
+
+	for (i = 0; i < ss.spl_copy_count; i++) {
+		char name[16];
+
+		ret = snprintf(name, sizeof(name), "spl-%u", i);
+		if (ret < 0 || (size_t)ret >= sizeof(name))
+			goto err;
+		if (sunxi_mtdparts_add(parts, sizeof(parts), &len, name,
+				       ss.spl_copy_size,
+				       ss.spl_copy_size * i, false))
+			goto err;
+	}
+
+	if (sunxi_mtdparts_add(parts, sizeof(parts), &len, "uboot",
+			       ss.uboot_size, ss.uboot_offset, false))
+		goto err;
+	if (sunxi_mtdparts_add(parts, sizeof(parts), &len, "securestorage",
+			       ss.secure_size, ss.secure_offset, true))
+		goto err;
+	if (sunxi_mtdparts_append(parts, sizeof(parts), &len, "-@0x%llx(UBI)",
+				  (unsigned long long)ss.secure_end))
+		goto err;
+
+	generated = true;
+	*mtdids = ids;
+	*mtdparts = parts;
+	return;
+
+err:
+	ids[0] = '\0';
+}
+#endif
+
+static int sunxi_fdt_prepare_fixed_partitions(void *blob,
+					      const struct node_info *nodes,
+					      int node_count)
+{
+	int chip, i, nand, partitions, ret;
+
+	if (!IS_ENABLED(CONFIG_SUNXI_NAND_SECURE_STORAGE_MTD_PARTS))
+		return 0;
+
+	for (i = 0; i < node_count; i++) {
+		fdt_for_each_node_by_compatible(nand, blob, -1,
+						nodes[i].compat) {
+			const char *status;
+
+			status = fdt_getprop(blob, nand, "status", NULL);
+			if (status && !strcmp(status, "disabled"))
+				continue;
+
+			fdt_for_each_subnode(chip, blob, nand) {
+				const char *name = fdt_get_name(blob, chip, NULL);
+				u32 address_cells, size_cells;
+
+				if (!name || strncmp(name, "nand@", 5))
+					continue;
+
+				address_cells =
+					fdt_getprop_u32_default_node(blob, chip, 0,
+								     "#address-cells", 1);
+				size_cells =
+					fdt_getprop_u32_default_node(blob, chip, 0,
+								     "#size-cells", 1);
+
+				ret = fdt_increase_size(blob, 128);
+				if (ret)
+					return ret;
+
+				partitions =
+					fdt_find_or_add_subnode(blob, chip, "partitions");
+				if (partitions < 0)
+					return partitions;
+
+				ret = fdt_setprop_string(blob, partitions, "compatible",
+							 "fixed-partitions");
+				if (!ret)
+					ret = fdt_setprop_u32(blob, partitions,
+							      "#address-cells",
+							      address_cells);
+				if (!ret)
+					ret = fdt_setprop_u32(blob, partitions,
+							      "#size-cells",
+							      size_cells);
+
+				return ret;
+			}
+		}
+	}
+
+	return -FDT_ERR_NOTFOUND;
+}
+
+static int sunxi_fdt_set_ubi_compatible(void *blob,
+					const struct node_info *nodes,
+					int node_count)
+{
+	bool found = false;
+	int depth, i, nand, part;
+
+	if (!IS_ENABLED(CONFIG_SUNXI_NAND_SECURE_STORAGE_MTD_PARTS))
+		return 0;
+
+	for (i = 0; i < node_count; i++) {
+		fdt_for_each_node_by_compatible(nand, blob, -1,
+						nodes[i].compat) {
+			const char *status;
+
+			status = fdt_getprop(blob, nand, "status", NULL);
+			if (status && !strcmp(status, "disabled"))
+				continue;
+
+			/* Partitions may be children of a NAND chip subnode. */
+			depth = 0;
+			for (part = fdt_next_node(blob, nand, &depth);
+			     part >= 0 && depth > 0;
+			     part = fdt_next_node(blob, part, &depth)) {
+				const char *label;
+				int ret;
+
+				label = fdt_getprop(blob, part, "label", NULL);
+				if (!label || strcmp(label, "UBI"))
+					continue;
+
+				ret = fdt_setprop_string(blob, part, "compatible",
+							 "linux,ubi");
+				if (ret == -FDT_ERR_NOSPACE) {
+					ret = fdt_increase_size(blob, 32);
+					if (!ret)
+						ret = fdt_setprop_string(blob, part,
+									 "compatible",
+									 "linux,ubi");
+				}
+				if (ret)
+					return ret;
+				found = true;
+			}
+		}
+	}
+
+	return found ? 0 : -FDT_ERR_NOTFOUND;
+}
 
 void i2c_init_board(void)
 {
@@ -794,6 +1021,8 @@ static void setup_environment(const void *fdt)
 	char ethaddr[16];
 	int i;
 
+	sunxi_nand_secure_storage_setup_ethaddr();
+
 	if (!get_unique_sid(sid))
 		return;
 
@@ -932,14 +1161,28 @@ static void board_dt_fixup(void *blob)
 
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	int __maybe_unused r;
+	int __maybe_unused parts_ret, r;
 
 	static const struct node_info nodes[] = {
 		{ "allwinner,sun50i-h616-nand-controller", MTD_DEV_TYPE_NAND, },
 	};
 
-	if (IS_ENABLED(CONFIG_FDT_FIXUP_PARTITIONS) && IS_ENABLED(CONFIG_NAND_SUNXI))
+	if (IS_ENABLED(CONFIG_FDT_FIXUP_PARTITIONS) && IS_ENABLED(CONFIG_NAND_SUNXI)) {
+		parts_ret = sunxi_fdt_prepare_fixed_partitions(blob, nodes,
+							       ARRAY_SIZE(nodes));
+		if (parts_ret && parts_ret != -FDT_ERR_NOTFOUND)
+			printf("Failed to prepare fixed NAND partitions: %s\n",
+			       fdt_strerror(parts_ret));
+
 		fdt_fixup_mtdparts(blob, nodes, ARRAY_SIZE(nodes));
+		if (!parts_ret) {
+			r = sunxi_fdt_set_ubi_compatible(blob, nodes,
+							 ARRAY_SIZE(nodes));
+			if (r && r != -FDT_ERR_NOTFOUND)
+				printf("Failed to mark the UBI partition: %s\n",
+				       fdt_strerror(r));
+		}
+	}
 
 	/*
 	 * Call setup_environment and fdt_fixup_ethernet again

@@ -22,3 +22,42 @@ config SPL_IMAGE_TYPE
 	string
 	default "sunxi_egon" if SPL_IMAGE_TYPE_SUNXI_EGON
 	default "sunxi_toc0" if SPL_IMAGE_TYPE_SUNXI_TOC0
+
+config SUNXI_NAND_SECURE_STORAGE
+	bool "Allwinner NAND secure storage support"
+	depends on NAND_SUNXI && MTD_RAW_NAND
+	help
+	  Enable support for reading the Allwinner BSP raw NAND secure-storage
+	  area from U-Boot proper. This is used by some sunxi boards to
+	  preserve BSP factory data, such as MAC addresses, when booting a
+	  mainline NAND layout.
+
+config SUNXI_NAND_SECURE_STORAGE_ETHADDR
+	bool "Read ethaddr from Allwinner NAND secure storage"
+	depends on SUNXI_NAND_SECURE_STORAGE && NET
+	select CRC32
+	help
+	  Read the configured secure-storage key and use it as the primary
+	  Ethernet MAC address before the normal sunxi fallback environment
+	  value is generated.
+
+config SUNXI_NAND_SECURE_STORAGE_ETHADDR_KEY
+	string "NAND secure-storage key name for ethaddr"
+	depends on SUNXI_NAND_SECURE_STORAGE_ETHADDR
+	default "mac"
+	help
+	  Name of the secure-storage item containing the primary Ethernet MAC
+	  address. The BSP store_object payload is parsed like a U-Boot
+	  Ethernet environment variable.
+
+config SUNXI_NAND_SECURE_STORAGE_MTD_PARTS
+	bool "Generate NAND mtdparts around secure storage"
+	depends on SUNXI_NAND_SECURE_STORAGE && SYS_MTDPARTS_RUNTIME
+	help
+	  Generate the default NAND mtdparts at runtime by locating BSP
+	  secure-storage marker blocks and placing the UBI partition immediately
+	  after the last marker. Mark that partition for automatic UBI attachment
+	  by Linux. This avoids hard-coding the secure-storage offset, which may
+	  shift when bad blocks are present before or inside the BSP secure-storage
+	  window. Only SLC raw NAND is supported; MLC/TLC parts need the BSP
+	  LSB-block-size mapping, which is not available here.
