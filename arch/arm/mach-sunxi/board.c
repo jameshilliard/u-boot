@@ -500,7 +500,7 @@ void board_init_f(ulong dummy)
 	clock_init();
 	gpio_init();
 
-	spl_init();
+	spl_early_init();
 	preloader_console_init();
 
 #if CONFIG_IS_ENABLED(I2C) && CONFIG_IS_ENABLED(SYS_I2C_LEGACY)
