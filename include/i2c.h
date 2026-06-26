@@ -613,6 +613,8 @@ int acpi_i2c_of_to_plat(struct udevice *dev);
 void i2c_early_init_f(void);
 #endif
 
+void i2c_init_board(void);
+
 #if !CONFIG_IS_ENABLED(DM_I2C)
 
 /*
@@ -700,7 +702,6 @@ struct i2c_adapter *i2c_get_adapter(int index);
  * repeatedly to change the speed and slave addresses.
  */
 void i2c_init(int speed, int slaveaddr);
-void i2c_init_board(void);
 
 #if CONFIG_IS_ENABLED(SYS_I2C_LEGACY)
 /*

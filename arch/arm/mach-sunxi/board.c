@@ -503,10 +503,13 @@ void board_init_f(ulong dummy)
 	spl_early_init();
 	preloader_console_init();
 
-#if CONFIG_IS_ENABLED(I2C) && CONFIG_IS_ENABLED(SYS_I2C_LEGACY)
+#if CONFIG_IS_ENABLED(I2C) && \
+	(CONFIG_IS_ENABLED(SYS_I2C_LEGACY) || CONFIG_IS_ENABLED(DM_I2C))
 	/* Needed early by sunxi_board_init if PMU is enabled */
 	i2c_init_board();
+#if CONFIG_IS_ENABLED(SYS_I2C_LEGACY)
 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+#endif
 #endif
 	/*
 	 * pinmux pwm5:
