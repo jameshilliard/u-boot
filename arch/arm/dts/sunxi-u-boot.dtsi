@@ -23,6 +23,16 @@
 &ccu {
 	bootph-pre-ram;
 };
+
+&rtc {
+	bootph-pre-ram;
+};
+#endif
+
+#ifdef CONFIG_SPL_SUNXI_CE
+&crypto {
+	bootph-pre-ram;
+};
 #endif
 
 #ifdef CONFIG_SPL_PINCTRL
