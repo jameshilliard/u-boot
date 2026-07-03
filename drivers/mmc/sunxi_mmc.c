@@ -64,6 +64,11 @@ static bool sunxi_mmc_can_calibrate(void)
 	       IS_ENABLED(CONFIG_MACH_SUN8I_R40);
 }
 
+static bool sunxi_mmc_needs_data0_mask(void)
+{
+	return IS_ENABLED(CONFIG_SUN50I_GEN_H6) ||
+	       IS_ENABLED(CONFIG_SUNXI_GEN_NCAT2);
+}
 static int mmc_set_mod_clk(struct sunxi_mmc_priv *priv, unsigned int hz)
 {
 	unsigned int pll, pll_hz, div, n, oclk_dly, sclk_dly;
@@ -204,12 +209,24 @@ static int mmc_update_clk(struct sunxi_mmc_priv *priv)
 static int mmc_config_clock(struct sunxi_mmc_priv *priv, struct mmc *mmc)
 {
 	unsigned rval = readl(&priv->reg->clkcr);
+	bool mask_data0 = sunxi_mmc_needs_data0_mask();
 
 	/* Disable Clock */
-	rval &= ~SUNXI_MMC_CLK_ENABLE;
+	rval &= ~(SUNXI_MMC_CLK_ENABLE | SUNXI_MMC_CLK_POWERSAVE |
+		  SUNXI_MMC_CLK_MASK_DATA0);
+	if (mask_data0)
+		rval |= SUNXI_MMC_CLK_MASK_DATA0;
 	writel(rval, &priv->reg->clkcr);
-	if (mmc_update_clk(priv))
+	if (mmc_update_clk(priv)) {
+		if (mask_data0)
+			writel(rval & ~SUNXI_MMC_CLK_MASK_DATA0,
+			       &priv->reg->clkcr);
 		return -1;
+	}
+	if (mask_data0) {
+		rval &= ~SUNXI_MMC_CLK_MASK_DATA0;
+		writel(rval, &priv->reg->clkcr);
+	}
 
 	/* Set mod_clk to new rate */
 	if (mmc_set_mod_clk(priv, mmc->clock))
@@ -231,10 +248,21 @@ static int mmc_config_clock(struct sunxi_mmc_priv *priv, struct mmc *mmc)
 #endif
 
 	/* Re-enable Clock */
+	rval &= ~(SUNXI_MMC_CLK_POWERSAVE | SUNXI_MMC_CLK_MASK_DATA0);
 	rval |= SUNXI_MMC_CLK_ENABLE;
+	if (mask_data0)
+		rval |= SUNXI_MMC_CLK_MASK_DATA0;
 	writel(rval, &priv->reg->clkcr);
-	if (mmc_update_clk(priv))
+	if (mmc_update_clk(priv)) {
+		if (mask_data0)
+			writel(rval & ~SUNXI_MMC_CLK_MASK_DATA0,
+			       &priv->reg->clkcr);
 		return -1;
+	}
+	if (mask_data0) {
+		rval &= ~SUNXI_MMC_CLK_MASK_DATA0;
+		writel(rval, &priv->reg->clkcr);
+	}
 
 	return 0;
 }

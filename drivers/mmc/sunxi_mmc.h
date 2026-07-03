@@ -58,6 +58,7 @@ struct sunxi_mmc {
 
 #define SUNXI_MMC_CLK_POWERSAVE		(0x1 << 17)
 #define SUNXI_MMC_CLK_ENABLE		(0x1 << 16)
+#define SUNXI_MMC_CLK_MASK_DATA0	(0x1U << 31)
 #define SUNXI_MMC_CLK_DIVIDER_MASK	(0xff)
 
 #define SUNXI_MMC_GCTRL		0x000
