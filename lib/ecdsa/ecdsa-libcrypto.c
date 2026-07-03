@@ -352,7 +352,7 @@ static int prepare_ctx(struct signer *ctx, const struct image_sign_info *info)
 	} else if (info->keyfile) {
 		snprintf(kname,  sizeof(kname), "%s", info->keyfile);
 	} else if (info->keydir && info->keyname) {
-		snprintf(kname, sizeof(kname), "%s/%s.pem", info->keydir,
+		snprintf(kname, sizeof(kname), "%s/%s.key", info->keydir,
 			 info->keyname);
 	} else {
 		fprintf(stderr, "keyfile, keyname, or key-name-hint missing\n");
