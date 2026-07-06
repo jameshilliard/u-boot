@@ -42,8 +42,8 @@ static ulong spl_ram_load_read(struct spl_load_info *load, ulong sector,
 	return count;
 }
 
-static int spl_ram_load_image(struct spl_image_info *spl_image,
-			      struct spl_boot_device *bootdev)
+int spl_ram_load_image(struct spl_image_info *spl_image,
+		       struct spl_boot_device *bootdev)
 {
 	struct legacy_img_hdr *header;
 	ulong addr = 0;

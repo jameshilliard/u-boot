@@ -842,6 +842,9 @@ struct spl_image_loader {
 			  struct spl_boot_device *bootdev);
 };
 
+int spl_ram_load_image(struct spl_image_info *spl_image,
+		       struct spl_boot_device *bootdev);
+
 /* Helper function for accessing the name */
 static inline const char *spl_loader_name(const struct spl_image_loader *loader)
 {

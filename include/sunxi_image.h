@@ -30,6 +30,7 @@
 #define SPL_ENV_HEADER_VERSION	SPL_VERSION(0, 1)
 #define SPL_DT_HEADER_VERSION	SPL_VERSION(0, 2)
 #define SPL_DRAM_HEADER_VERSION	SPL_VERSION(0, 3)
+#define SPL_FEL_RAMFIT_HEADER_VERSION	SPL_VERSION(0, 4)
 
 /* boot head definition from sun4i boot code */
 struct boot_file_head {

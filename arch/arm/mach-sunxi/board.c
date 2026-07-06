@@ -10,9 +10,12 @@
  */
 
 #include <cpu_func.h>
+#include <errno.h>
 #include <init.h>
+#include <limits.h>
 #include <log.h>
 #include <mmc.h>
+#include <setjmp.h>
 #include <i2c.h>
 #include <serial.h>
 #include <spl.h>
@@ -28,6 +31,8 @@
 #include <asm/arch/mmc.h>
 
 #include <linux/compiler.h>
+
+#define SUNXI_FEL_RAMFIT_WAIT	0xf8
 
 struct fel_stash {
 	uint32_t sp;
@@ -78,6 +83,18 @@ phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 #endif /* CONFIG_ARM64 */
 
 #ifdef CONFIG_XPL_BUILD
+static jmp_buf sunxi_fel_ramfit_jmp __section(".data");
+static gd_t *sunxi_fel_ramfit_gd __section(".data");
+
+void __noreturn sunxi_spl_fel_ramfit_resume(void)
+{
+	set_gd(sunxi_fel_ramfit_gd);
+	longjmp(sunxi_fel_ramfit_jmp, 1);
+
+	for (;;)
+		;
+}
+
 static int gpio_init(void)
 {
 	__maybe_unused uint val;
@@ -235,6 +252,48 @@ static int gpio_init(void)
 static int spl_board_load_image(struct spl_image_info *spl_image,
 				struct spl_boot_device *bootdev)
 {
+	struct boot_file_head *spl = (void *)SPL_ADDR;
+	unsigned long fit_addr;
+
+	sunxi_fel_ramfit_gd = gd;
+	if (setjmp(sunxi_fel_ramfit_jmp)) {
+		puts("Resuming FEL RAM FIT handoff\n");
+		bootdev->boot_device = BOOT_DEVICE_RAM;
+		CONFIG_IS_ENABLED(RAM_SUPPORT,
+				  (return spl_ram_load_image(spl_image,
+							     bootdev);))
+		return -EOPNOTSUPP;
+	}
+
+	fit_addr = CONFIG_IS_ENABLED(HAS_LOAD_FIT_ADDRESS,
+				     (CONFIG_VAL(LOAD_FIT_ADDRESS)), (0));
+	if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) && fit_addr &&
+	    !memcmp(spl->spl_signature, SPL_SIGNATURE, 3)) {
+		unsigned long dram_start = PHYS_SDRAM_0;
+		unsigned long dram_size;
+		unsigned long dram_end;
+		unsigned long max_size;
+
+		dram_size = (unsigned long)readl(&spl->dram_size) << 20;
+		dram_end = dram_start + dram_size;
+		if (fit_addr >= dram_start && fit_addr < dram_end) {
+			max_size = dram_end - fit_addr;
+			if (max_size > UINT_MAX)
+				max_size = UINT_MAX;
+
+			writel(fit_addr, &spl->fel_script_address);
+			writel(max_size, &spl->fel_uEnv_length);
+			/* Reuse the DT-name field for this resume entry. */
+			writel((ulong)sunxi_spl_fel_ramfit_resume,
+			       &spl->dt_name_offset);
+			if (spl->spl_signature[3] <
+			    SPL_FEL_RAMFIT_HEADER_VERSION)
+				spl->spl_signature[3] =
+					SPL_FEL_RAMFIT_HEADER_VERSION;
+			writeb(SUNXI_FEL_RAMFIT_WAIT, &spl->boot_media);
+		}
+	}
+
 	debug("Returning to FEL sp=%x, lr=%x\n", fel_stash.sp, fel_stash.lr);
 	return_to_fel(fel_stash.sp, fel_stash.lr);
 
