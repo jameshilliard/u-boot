@@ -61,6 +61,8 @@
 #define NFC_REG_PAT_ID(nfc)	((nfc)->caps->reg_pat_id)
 #define NFC_REG_A10_PAT_ID	0x00A4
 #define NFC_REG_H6_PAT_ID	0x0118
+#define NFC_REG_MDMA_DLBA	0x0200
+#define NFC_REG_MDMA_STA	0x0204
 #define NFC_RAM0_BASE		0x0400
 #define NFC_RAM1_BASE		0x0800
 
@@ -80,6 +82,7 @@
 #define NFC_PAGE_SIZE(a)	((fls(a) - 11) << 8)
 #define NFC_SAM			BIT(12)
 #define NFC_RAM_METHOD		BIT(14)
+#define NFC_DMA_TYPE_NORMAL	BIT(15)
 #define NFC_DEBUG_CTL		BIT(31)
 
 /* define bit use in NFC_ST */
@@ -127,9 +130,9 @@
 #define NFC_SEND_CMD3		BIT(28)
 #define NFC_SEND_CMD4		BIT(29)
 #define NFC_CMD_TYPE_MSK	(0x3 << 30)
-#define NFC_NORMAL_OP		(0 << 30)
-#define NFC_ECC_OP		(1 << 30)
-#define NFC_PAGE_OP		(2 << 30)
+#define NFC_NORMAL_OP		0
+#define NFC_ECC_OP		BIT(30)
+#define NFC_PAGE_OP		BIT(31)
 
 /* define bit use in NFC_RCMD_SET */
 #define NFC_READ_CMD_OFFSET	0
@@ -169,6 +172,10 @@
 
 #define NFC_ECC_ERR_CNT(b, x)	(((x) >> (((b) % 4) * 8)) & 0xff)
 
+#define NFC_MDMA_DESC_LAST	BIT(2)
+#define NFC_MDMA_DESC_FIRST	BIT(3)
+#define NFC_MDMA_DESC_SIZE_MASK	GENMASK(15, 0)
+
 #define NFC_USER_DATA_LEN_MSK(step) \
 	(0xf << (((step) % NFC_REG_USER_DATA_LEN_CAPACITY) * 4))
 
@@ -207,6 +214,7 @@ struct sunxi_nfc_timings;
  * @nuser_data_tab:	Size of @user_data_len_tab
  * @max_ecc_steps:	Maximum supported steps for ECC, this is also the
  *			number of user data registers
+ * @has_mbus_dma:	Use the NDFC MBUS descriptor DMA engine
  * @timings:		Controller-specific timing characteristics
  */
 struct sunxi_nfc_caps {
@@ -226,6 +234,7 @@ struct sunxi_nfc_caps {
 	const u8 *user_data_len_tab;
 	unsigned int nuser_data_tab;
 	unsigned int max_ecc_steps;
+	bool has_mbus_dma;
 	const struct sunxi_nfc_timings *timings;
 };
 
