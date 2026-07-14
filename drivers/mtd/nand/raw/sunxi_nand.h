@@ -181,6 +181,8 @@
 /* On A10, the user data length register is 4 bytes */
 #define USER_DATA_SZ 4
 
+struct sunxi_nfc_timings;
+
 /*
  * NAND Controller capabilities structure: stores NAND controller capabilities
  * for distinction between compatible strings.
@@ -205,6 +207,7 @@
  * @nuser_data_tab:	Size of @user_data_len_tab
  * @max_ecc_steps:	Maximum supported steps for ECC, this is also the
  *			number of user data registers
+ * @timings:		Controller-specific timing characteristics
  */
 struct sunxi_nfc_caps {
 	bool has_ecc_block_512;
@@ -223,6 +226,7 @@ struct sunxi_nfc_caps {
 	const u8 *user_data_len_tab;
 	unsigned int nuser_data_tab;
 	unsigned int max_ecc_steps;
+	const struct sunxi_nfc_timings *timings;
 };
 
 #endif
