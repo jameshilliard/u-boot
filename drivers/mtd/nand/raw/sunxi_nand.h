@@ -167,7 +167,7 @@
 #define NFC_ECC_PAT_FOUND(x)	BIT(x)
 #define NFC_ECC_PAT_FOUND_MSK(nfc) ((nfc)->caps->pat_found_mask)
 
-#define NFC_ECC_ERR_CNT(b, x)	(((x) >> ((b) * 8)) & 0xff)
+#define NFC_ECC_ERR_CNT(b, x)	(((x) >> (((b) % 4) * 8)) & 0xff)
 
 #define NFC_USER_DATA_LEN_MSK(step) \
 	(0xf << (((step) % NFC_REG_USER_DATA_LEN_CAPACITY) * 4))
