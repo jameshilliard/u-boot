@@ -837,6 +837,10 @@ config MMC_SUNXI
 	bool "Allwinner sunxi SD/MMC Host Controller support"
 	depends on ARCH_SUNXI
 	default y
+	select SPL_CLK if SPL_DM_MMC
+	select SPL_OF_CONTROL if SPL_DM_MMC
+	select SPL_PINCONF if SPL_DM_MMC
+	select SPL_PINCTRL if SPL_DM_MMC
 	help
 	  This selects support for the SD/MMC Host Controller on
 	  Allwinner sunxi SoCs.
