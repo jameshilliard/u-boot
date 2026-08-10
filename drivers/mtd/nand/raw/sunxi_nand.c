@@ -122,7 +122,7 @@ struct sunxi_nand_hw_ecc {
  * @timing_cfg		TIMING_CFG register value for this NAND chip
  * @selected:		current active CS
  * @user_data_bytes	array of user data lengths for all ECC steps
- * @scramble_bbm:	if the bbm should be scrambled or not
+ * @randomized_oob:	use the randomized normal-page OOB format
  * @dma_desc:		NDFC MBUS DMA descriptor
  * @dma_buf:		cache-aligned full-page DMA bounce buffer
  * @nsels:		number of CS lines required by the NAND chip
@@ -140,7 +140,7 @@ struct sunxi_nand_chip {
 	int cmd_cycles;
 	u8 cmd[2];
 	u8 *user_data_bytes;
-	bool scramble_bbm;
+	bool randomized_oob;
 	struct sunxi_nfc_dma_desc *dma_desc;
 	u8 *dma_buf;
 	int nsels;
@@ -809,7 +809,7 @@ static void sunxi_nfc_hw_ecc_get_prot_oob_bytes(struct nand_chip *nand, u8 *oob,
 
 	/* De-randomize the Bad Block Marker. */
 	if (bbm && nand->options & NAND_NEED_SCRAMBLING &&
-	    !sunxi_nand->scramble_bbm)
+	    !sunxi_nand->randomized_oob)
 		sunxi_nfc_randomize_bbm(&nand->mtd, page, oob);
 }
 
@@ -986,7 +986,7 @@ static int sunxi_nfc_hw_ecc_write_chunk(struct mtd_info *mtd,
 
 	/* Fill OOB data in */
 	if ((nand->options & NAND_NEED_SCRAMBLING) && bbm &&
-	    !sunxi_nand->scramble_bbm) {
+	    !sunxi_nand->randomized_oob) {
 		u8 *user_data;
 
 		user_data = kzalloc(user_data_sz, GFP_KERNEL);
@@ -1622,12 +1622,20 @@ static int sunxi_nand_chip_init_timings(struct sunxi_nfc *nfc,
 	return sunxi_nand_chip_set_timings(nfc, chip, timings);
 }
 
-static int sunxi_nfc_maximize_user_data(struct nand_chip *nand, uint32_t oobsize,
-					int ecc_bytes, int nsectors)
+#define SUNXI_NFC_H6_MAX_USER_DATA_SZ 16
+
+static unsigned int sunxi_nfc_h6_user_data_sz(int nsectors)
+{
+	return min(nsectors * USER_DATA_SZ,
+		   SUNXI_NFC_H6_MAX_USER_DATA_SZ);
+}
+
+static int sunxi_nfc_init_user_data(struct nand_chip *nand, u32 oobsize,
+				    int ecc_bytes, int nsectors)
 {
 	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
 	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
-	const struct sunxi_nfc_caps *c = nfc->caps;
+	const struct sunxi_nfc_caps *caps = nfc->caps;
 	int remaining_bytes = oobsize - (ecc_bytes * nsectors);
 	int i, step;
 
@@ -1636,11 +1644,19 @@ static int sunxi_nfc_maximize_user_data(struct nand_chip *nand, uint32_t oobsize
 	if (!sunxi_nand->user_data_bytes)
 		return -ENOMEM;
 
+	if (sunxi_nand->randomized_oob) {
+		/* The randomized layout puts all user data before ECC step 0. */
+		sunxi_nand->user_data_bytes[0] =
+			sunxi_nfc_h6_user_data_sz(nsectors);
+		return 0;
+	}
+
 	for (step = 0; (step < nsectors) && (remaining_bytes > 0); step++) {
-		for (i = 0; i < c->nuser_data_tab; i++) {
-			if (c->user_data_len_tab[i] > remaining_bytes)
+		for (i = 0; i < caps->nuser_data_tab; i++) {
+			if (caps->user_data_len_tab[i] > remaining_bytes)
 				break;
-			sunxi_nand->user_data_bytes[step] = c->user_data_len_tab[i];
+			sunxi_nand->user_data_bytes[step] =
+				caps->user_data_len_tab[i];
 		}
 		remaining_bytes -= sunxi_nand->user_data_bytes[step];
 		if (sunxi_nand->user_data_bytes[step] == 0)
@@ -1684,6 +1700,8 @@ static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 			 * because they are part of the USER_DATA_SZ.
 			 */
 			bytes -= total_user_data_sz;
+		} else if (sunxi_nand->randomized_oob) {
+			bytes -= sunxi_nfc_h6_user_data_sz(nsectors);
 		} else {
 			/*
 			 * remove at least the BBM size before computing the
@@ -1759,10 +1777,12 @@ static int sunxi_nand_hw_common_ecc_ctrl_init(struct mtd_info *mtd,
 	layout = &data->layout;
 	nsectors = mtd->writesize / ecc->size;
 
-	/* Use the remaining OOB space for user data */
-	if (nfc->caps->reg_user_data_len)
-		sunxi_nfc_maximize_user_data(nand, mtd->oobsize, ecc->bytes,
-					     nsectors);
+	if (nfc->caps->reg_user_data_len) {
+		ret = sunxi_nfc_init_user_data(nand, mtd->oobsize,
+					       ecc->bytes, nsectors);
+		if (ret)
+			goto err;
+	}
 
 	for (i = 0; i < nsectors; i++)
 		total_user_data_sz += sunxi_nfc_user_data_sz(sunxi_nand, i);
@@ -2018,8 +2038,8 @@ static int sunxi_nand_chip_init(struct udevice *dev, struct sunxi_nfc *nfc,
 	chip->nsels = nsels;
 	chip->selected = -1;
 
-	if (ofnode_read_bool(np, "allwinner,scramble_bbm"))
-		chip->scramble_bbm = true;
+	if (ofnode_read_bool(np, "allwinner,randomized-oob"))
+		chip->randomized_oob = true;
 
 	for (i = 0; i < nsels; i++) {
 		ret = ofnode_read_u32_index(np, "reg", i, &tmp);
@@ -2098,7 +2118,7 @@ static int sunxi_nand_chip_init(struct udevice *dev, struct sunxi_nfc *nfc,
 	if (nand->bbt_options & NAND_BBT_USE_FLASH)
 		nand->bbt_options |= NAND_BBT_NO_OOB;
 
-	if (chip->scramble_bbm)
+	if (chip->randomized_oob)
 		nand->options |= NAND_NEED_SCRAMBLING;
 
 	if (nand->options & NAND_NEED_SCRAMBLING)
