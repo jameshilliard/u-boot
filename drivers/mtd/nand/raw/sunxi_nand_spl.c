@@ -284,7 +284,11 @@ static u8 nand_user_data_sz(const struct nfc_config *conf, int step)
 	if (!conf->user_data_bytes)
 		return USER_DATA_SZ;
 
-	return step ? 0 : 8;
+	if (step)
+		return 0;
+
+	return min(conf->page_size / conf->ecc_size * USER_DATA_SZ,
+		   SUNXI_NFC_H6_MAX_USER_DATA_SZ);
 }
 
 static int nand_read_page(const struct nfc_config *conf, u32 offs,
@@ -431,6 +435,7 @@ static int nand_max_ecc_strength(struct nfc_config *conf)
 	int nsectors = conf->page_size / conf->ecc_size;
 	unsigned int total_user_data_sz = 0;
 	int ecc_idx, i;
+	int ret;
 
 	/*
 	 * ECC strength is limited by the size of the OOB area which is
@@ -478,8 +483,10 @@ static int nand_max_ecc_strength(struct nfc_config *conf)
 	 * strength, and then use the remaining space for user data.
 	 */
 	if (conf->caps->reg_user_data_len) {
-		nand_maximize_user_data(conf, max_oobsize,
-					ecc_bytes[ecc_idx], nsectors);
+		ret = nand_maximize_user_data(conf, max_oobsize,
+					      ecc_bytes[ecc_idx], nsectors);
+		if (ret)
+			return ret;
 
 		total_user_data_sz = 0;
 		for (i = 0; i < nsectors; i++)
@@ -504,6 +511,9 @@ static int nand_detect_ecc_config(struct nfc_config *conf, u32 offs,
 	for (conf->ecc_size = 1024; conf->ecc_size >= min_ecc_size;
 	     conf->ecc_size >>= 1) {
 		int max_ecc_strength = nand_max_ecc_strength(conf);
+
+		if (max_ecc_strength < 0)
+			return max_ecc_strength;
 
 		nand_apply_config(conf);
 

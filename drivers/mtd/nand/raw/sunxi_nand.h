@@ -185,8 +185,12 @@
 
 #define NFC_MAX_CS		7
 
-/* On A10, the user data length register is 4 bytes */
+/* On A10, the user data length register is 4 bytes. */
 #define USER_DATA_SZ 4
+/* H6/H616 support at most 32 protected user-data bytes per ECC step. */
+#define SUNXI_NFC_MAX_USER_DATA_SZ 32
+/* The randomized H6/H616 layout packs at most 16 bytes before ECC step 0. */
+#define SUNXI_NFC_H6_MAX_USER_DATA_SZ 16
 
 struct sunxi_nfc_timings;
 
