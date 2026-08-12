@@ -746,6 +746,15 @@ config SL28CPLD
 	  the base driver which provides common access methods for the
 	  sub-drivers.
 
+config XPOWERS_AC200
+	bool "X-Powers AC200 register provider"
+	depends on DM_I2C && CLK
+	depends on MISC
+	help
+	  Enable the I2C register provider for the X-Powers AC200 mixed-signal
+	  companion IC. Function drivers use the exported accessors to reach
+	  the AC200 paged register map.
+
 config SPL_SOCFPGA_DT_REG
 	bool "Enable register setting from device tree in SPL"
 	depends on SPL
