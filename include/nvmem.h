@@ -6,6 +6,7 @@
 #ifndef NVMEM_H
 #define NVMEM_H
 
+#include <dm/ofnode.h>
 #include <linux/errno.h>
 
 /**
@@ -86,6 +87,20 @@ int nvmem_cell_get_by_index(struct udevice *dev, int index,
 			    struct nvmem_cell *cell);
 
 /**
+ * nvmem_cell_get_by_index_nodev() - Get an NVMEM cell from an ofnode
+ * @node: Device-tree node that uses the NVMEM cell
+ * @index: Index of the cell in nvmem-cells
+ * @cell: Cell to initialize
+ *
+ * This is the node-based form of nvmem_cell_get_by_index(), for consumers
+ * which do not have a corresponding driver-model device.
+ *
+ * Return: 0 on success or a negative error code on failure
+ */
+int nvmem_cell_get_by_index_nodev(ofnode node, int index,
+				  struct nvmem_cell *cell);
+
+/**
  * nvmem_cell_get_by_name() - Get an nvmem cell from a given device and name
  * @dev: The device that uses the nvmem cell
  * @name: The name of the nvmem cell
@@ -106,6 +121,20 @@ int nvmem_cell_get_by_index(struct udevice *dev, int index,
 int nvmem_cell_get_by_name(struct udevice *dev, const char *name,
 			   struct nvmem_cell *cell);
 
+/**
+ * nvmem_cell_get_by_name_nodev() - Get a named NVMEM cell from an ofnode
+ * @node: Device-tree node that uses the NVMEM cell
+ * @name: Name in the nvmem-cell-names property
+ * @cell: Cell to initialize
+ *
+ * This is the node-based form of nvmem_cell_get_by_name(), for consumers
+ * which do not have a corresponding driver-model device.
+ *
+ * Return: 0 on success or a negative error code on failure
+ */
+int nvmem_cell_get_by_name_nodev(ofnode node, const char *name,
+				 struct nvmem_cell *cell);
+
 #else /* CONFIG_NVMEM */
 
 static inline int nvmem_cell_read(struct nvmem_cell *cell, void *buf, int size)
@@ -125,8 +154,20 @@ static inline int nvmem_cell_get_by_index(struct udevice *dev, int index,
 	return -ENOSYS;
 }
 
+static inline int nvmem_cell_get_by_index_nodev(ofnode node, int index,
+						struct nvmem_cell *cell)
+{
+	return -ENOSYS;
+}
+
 static inline int nvmem_cell_get_by_name(struct udevice *dev, const char *name,
 					 struct nvmem_cell *cell)
+{
+	return -ENOSYS;
+}
+
+static inline int nvmem_cell_get_by_name_nodev(ofnode node, const char *name,
+					       struct nvmem_cell *cell)
 {
 	return -ENOSYS;
 }

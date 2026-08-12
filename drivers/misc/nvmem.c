@@ -95,8 +95,8 @@ static int nvmem_get_device(ofnode node, struct nvmem_cell *cell)
 	return -ENODEV;
 }
 
-int nvmem_cell_get_by_index(struct udevice *dev, int index,
-			    struct nvmem_cell *cell)
+int nvmem_cell_get_by_index_nodev(ofnode node, int index,
+				  struct nvmem_cell *cell)
 {
 	fdt_addr_t offset;
 	fdt_size_t size = FDT_SIZE_T_NONE;
@@ -104,10 +104,8 @@ int nvmem_cell_get_by_index(struct udevice *dev, int index,
 	struct ofnode_phandle_args args;
 	ofnode par;
 
-	dev_dbg(dev, "%s: index=%d\n", __func__, index);
-
-	ret = dev_read_phandle_with_args(dev, "nvmem-cells", NULL, 0, index,
-					 &args);
+	ret = ofnode_parse_phandle_with_args(node, "nvmem-cells", NULL, 0,
+					     index, &args);
 	if (ret)
 		return ret;
 
@@ -131,16 +129,30 @@ int nvmem_cell_get_by_index(struct udevice *dev, int index,
 	return 0;
 }
 
-int nvmem_cell_get_by_name(struct udevice *dev, const char *name,
-			   struct nvmem_cell *cell)
+int nvmem_cell_get_by_index(struct udevice *dev, int index,
+			    struct nvmem_cell *cell)
+{
+	dev_dbg(dev, "%s: index=%d\n", __func__, index);
+
+	return nvmem_cell_get_by_index_nodev(dev_ofnode(dev), index, cell);
+}
+
+int nvmem_cell_get_by_name_nodev(ofnode node, const char *name,
+				 struct nvmem_cell *cell)
 {
 	int index;
 
-	dev_dbg(dev, "%s, name=%s\n", __func__, name);
-
-	index = dev_read_stringlist_search(dev, "nvmem-cell-names", name);
+	index = ofnode_stringlist_search(node, "nvmem-cell-names", name);
 	if (index < 0)
 		return index;
 
-	return nvmem_cell_get_by_index(dev, index, cell);
+	return nvmem_cell_get_by_index_nodev(node, index, cell);
+}
+
+int nvmem_cell_get_by_name(struct udevice *dev, const char *name,
+			   struct nvmem_cell *cell)
+{
+	dev_dbg(dev, "%s, name=%s\n", __func__, name);
+
+	return nvmem_cell_get_by_name_nodev(dev_ofnode(dev), name, cell);
 }
