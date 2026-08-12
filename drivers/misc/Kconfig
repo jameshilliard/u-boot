@@ -51,6 +51,16 @@ config NVMEM
 	  up hardware configuration data such as MAC addresses and calibration
 	  settings.
 
+config SUNXI_SID
+	bool "Allwinner Security ID NVMEM support"
+	depends on ARCH_SUNXI
+	depends on MISC
+	select NVMEM
+	help
+	  Enable read-only access to the Security ID efuse area found in
+	  Allwinner SoCs. This allows consumers to use the standard nvmem-cells
+	  properties from Linux-compatible device trees.
+
 config SPL_NVMEM
 	bool "NVMEM support in SPL"
 	help
