@@ -350,6 +350,19 @@ config PHY_VITESSE
 config PHY_XILINX
 	bool "Xilinx Ethernet PHYs support"
 
+config PHY_XPOWERS_ACX00
+	bool "X-Powers AC200/AC300 Ethernet PHY support"
+	depends on PHY_ETHERNET_ID
+	depends on DM_REGULATOR
+	depends on MISC
+	depends on OF_LIVE
+	imply XPOWERS_AC200
+	select NVMEM
+	help
+	  Enable the Fast Ethernet PHY driver shared by the X-Powers AC200
+	  and AC300 companion ICs. The driver uses an I2C register provider
+	  for AC200 and the package-relative MDIO control address for AC300.
+
 config PHY_XILINX_GMII2RGMII
 	bool "Xilinx GMII to RGMII Ethernet PHYs support"
 	help

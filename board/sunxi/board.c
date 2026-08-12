@@ -51,6 +51,7 @@
 #include <net.h>
 #include <spl.h>
 #include <sy8106a.h>
+#include <xpowers-acx00.h>
 #include <asm/setup.h>
 #include <vsprintf.h>
 
@@ -1194,6 +1195,10 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 
 	bluetooth_dt_fixup(blob);
 	board_dt_fixup(blob);
+
+	r = xpowers_acx00_fixup_fdt(blob);
+	if (r && r != -ENOENT)
+		printf("Failed to update the selected ACx00 path: %d\n", r);
 
 #ifdef CONFIG_VIDEO_DT_SIMPLEFB
 	r = sunxi_simplefb_setup(blob);
