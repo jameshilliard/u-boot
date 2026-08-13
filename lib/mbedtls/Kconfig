@@ -335,7 +335,7 @@ config SPL_LEGACY_HASHING
 	bool "Use U-Boot legacy hashing libraries (SPL)"
 	select SPL_MD5_LEGACY if SPL_MD5
 	select SPL_SHA1_LEGACY if SPL_SHA1
-	select SPL_SHA256_LEGACY if SPL_SHA256
+	imply SPL_SHA256_LEGACY if SPL_SHA256
 	select SPL_SHA512_LEGACY if SPL_SHA512
 	select SPL_SHA384_LEGACY if SPL_SHA384
 	help
