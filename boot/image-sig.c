@@ -18,8 +18,6 @@ struct checksum_algo checksum_algos[] = {
 	{
 		.name = "sha1",
 		.checksum_len = SHA1_SUM_LEN,
-		.der_len = SHA1_DER_LEN,
-		.der_prefix = sha1_der_prefix,
 		.calculate = hash_calculate,
 	},
 #endif
@@ -27,8 +25,6 @@ struct checksum_algo checksum_algos[] = {
 	{
 		.name = "sha256",
 		.checksum_len = SHA256_SUM_LEN,
-		.der_len = SHA256_DER_LEN,
-		.der_prefix = sha256_der_prefix,
 		.calculate = hash_calculate,
 	},
 #endif
@@ -36,8 +32,6 @@ struct checksum_algo checksum_algos[] = {
 	{
 		.name = "sha384",
 		.checksum_len = SHA384_SUM_LEN,
-		.der_len = SHA384_DER_LEN,
-		.der_prefix = sha384_der_prefix,
 		.calculate = hash_calculate,
 	},
 #endif
@@ -45,8 +39,6 @@ struct checksum_algo checksum_algos[] = {
 	{
 		.name = "sha512",
 		.checksum_len = SHA512_SUM_LEN,
-		.der_len = SHA512_DER_LEN,
-		.der_prefix = sha512_der_prefix,
 		.calculate = hash_calculate,
 	},
 #endif
