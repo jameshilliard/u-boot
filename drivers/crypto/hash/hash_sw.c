@@ -218,6 +218,13 @@ static int sw_hash_update(struct udevice *dev, void *ctx, const void *ibuf, uint
 	return 0;
 }
 
+static int sw_hash_abort(struct udevice *dev, void *ctx)
+{
+	free(ctx);
+
+	return 0;
+}
+
 static int sw_hash_finish(struct udevice *dev, void *ctx, void *obuf)
 {
 	struct sw_hash_ctx *hash_ctx = ctx;
@@ -225,9 +232,7 @@ static int sw_hash_finish(struct udevice *dev, void *ctx, void *obuf)
 
 	hash_impl->finish(hash_ctx->algo_ctx, obuf);
 
-	free(ctx);
-
-	return 0;
+	return sw_hash_abort(dev, ctx);
 }
 
 static int sw_hash_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
@@ -253,16 +258,20 @@ static int sw_hash_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
 				chunk = chunk_sz;
 
 			rc = sw_hash_update(dev, ctx, cur, chunk);
-			if (rc)
+			if (rc) {
+				sw_hash_abort(dev, ctx);
 				return rc;
+			}
 
 			cur += chunk;
 			schedule();
 		}
 	} else {
 		rc = sw_hash_update(dev, ctx, ibuf, ilen);
-		if (rc)
+		if (rc) {
+			sw_hash_abort(dev, ctx);
 			return rc;
+		}
 	}
 
 	rc = sw_hash_finish(dev, ctx, obuf);
@@ -284,6 +293,7 @@ static const struct hash_ops hash_ops_sw = {
 	.hash_init = sw_hash_init,
 	.hash_update = sw_hash_update,
 	.hash_finish = sw_hash_finish,
+	.hash_abort = sw_hash_abort,
 	.hash_digest_wd = sw_hash_digest_wd,
 	.hash_digest = sw_hash_digest,
 };

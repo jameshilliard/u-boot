@@ -38,6 +38,14 @@
 #include <u-boot/md5.h>
 #include <u-boot/sm3.h>
 
+#ifdef USE_HOSTCC
+#define SHA256_SOFTWARE_ENABLED 1
+#else
+#define SHA256_SOFTWARE_ENABLED \
+	(CONFIG_IS_ENABLED(SHA256_LEGACY) || \
+	 CONFIG_IS_ENABLED(SHA256_MBEDTLS))
+#endif
+
 static int __maybe_unused hash_init_sha1(struct hash_algo *algo, void **ctxp)
 {
 	sha1_context *ctx = malloc(sizeof(sha1_context));
@@ -65,6 +73,7 @@ static int __maybe_unused hash_finish_sha1(struct hash_algo *algo, void *ctx,
 	return 0;
 }
 
+#if SHA256_SOFTWARE_ENABLED
 static int __maybe_unused hash_init_sha256(struct hash_algo *algo, void **ctxp)
 {
 	sha256_context *ctx = malloc(sizeof(sha256_context));
@@ -91,6 +100,7 @@ static int __maybe_unused hash_finish_sha256(struct hash_algo *algo, void *ctx,
 	free(ctx);
 	return 0;
 }
+#endif
 
 static int __maybe_unused hash_init_sha384(struct hash_algo *algo, void **ctxp)
 {
@@ -273,14 +283,14 @@ static struct hash_algo hash_algo[] = {
 		.chunk_size	= CHUNKSZ_SHA256,
 #if CONFIG_IS_ENABLED(SHA_HW_ACCEL)
 		.hash_func_ws	= hw_sha256,
-#else
+#elif SHA256_SOFTWARE_ENABLED
 		.hash_func_ws	= sha256_csum_wd,
 #endif
 #if CONFIG_IS_ENABLED(SHA_PROG_HW_ACCEL)
 		.hash_init	= hw_sha_init,
 		.hash_update	= hw_sha_update,
 		.hash_finish	= hw_sha_finish,
-#else
+#elif SHA256_SOFTWARE_ENABLED
 		.hash_init	= hash_init_sha256,
 		.hash_update	= hash_update_sha256,
 		.hash_finish	= hash_finish_sha256,
@@ -633,6 +643,13 @@ int hash_command(const char *algo_name, int flags, struct cmd_tbl *cmdtp,
 				if (!ret)
 					goto done;
 			}
+		}
+		if (!algo->hash_func_ws) {
+			printf("Hash algorithm '%s' has no available provider\n",
+			       algo_name);
+			unmap_sysmem(buf);
+			free(output);
+			return CMD_RET_FAILURE;
 		}
 		algo->hash_func_ws(buf, len, output, algo->chunk_size);
 done:

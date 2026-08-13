@@ -75,8 +75,11 @@ static int cptra_sha_init(struct udevice *dev, enum HASH_ALGO algo, void **ctxp)
 	cs = dev_get_priv(dev);
 
 	/* get CPTRA SHA lock */
-	if (readl_poll_timeout(cs->regs + CPTRA_SHA_LOCK, reg, reg == 0, 1000000))
-		return -EBUSY;
+	if (readl_poll_timeout(cs->regs + CPTRA_SHA_LOCK, reg, reg == 0,
+			       1000000)) {
+		rc = -EBUSY;
+		goto free_n_out;
+	}
 
 	/* zero clear SHA */
 	writel(CPTRA_SHA_CTRL_ZEROIZE, cs->regs + CPTRA_SHA_CTRL);
@@ -133,6 +136,17 @@ static int cptra_sha_update(struct udevice *dev, void *ctx, const void *ibuf, ui
 	return 0;
 }
 
+static int cptra_sha_abort(struct udevice *dev, void *ctx)
+{
+	struct cptra_sha *cs = dev_get_priv(dev);
+
+	writel(CPTRA_SHA_CTRL_ZEROIZE, cs->regs + CPTRA_SHA_CTRL);
+	writel(0x1, cs->regs + CPTRA_SHA_LOCK);
+	free(ctx);
+
+	return 0;
+}
+
 static int cptra_sha_finish(struct udevice *dev, void *ctx, void *obuf)
 {
 	struct cptra_sha_ctx *cs_ctx;
@@ -158,12 +172,7 @@ static int cptra_sha_finish(struct udevice *dev, void *ctx, void *obuf)
 	for (i = 0; i < (cs_ctx->dgst_len / sizeof(*p32)); ++i, p32++)
 		*p32 = be32_to_cpu(readl(cs->regs + CPTRA_SHA_DIGEST(i)));
 
-	/* release CPTRA SHA lock */
-	writel(0x1, cs->regs + CPTRA_SHA_LOCK);
-
-	free(cs_ctx);
-
-	return 0;
+	return cptra_sha_abort(dev, ctx);
 }
 
 static int cptra_sha_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
@@ -189,16 +198,20 @@ static int cptra_sha_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
 				chunk = chunk_sz;
 
 			rc = cptra_sha_update(dev, ctx, cur, chunk);
-			if (rc)
+			if (rc) {
+				cptra_sha_abort(dev, ctx);
 				return rc;
+			}
 
 			cur += chunk;
 			schedule();
 		}
 	} else {
 		rc = cptra_sha_update(dev, ctx, ibuf, ilen);
-		if (rc)
+		if (rc) {
+			cptra_sha_abort(dev, ctx);
 			return rc;
+		}
 	}
 
 	rc = cptra_sha_finish(dev, ctx, obuf);
@@ -237,6 +250,7 @@ static const struct hash_ops cptra_sha_ops = {
 	.hash_init = cptra_sha_init,
 	.hash_update = cptra_sha_update,
 	.hash_finish = cptra_sha_finish,
+	.hash_abort = cptra_sha_abort,
 	.hash_digest_wd = cptra_sha_digest_wd,
 	.hash_digest = cptra_sha_digest,
 };

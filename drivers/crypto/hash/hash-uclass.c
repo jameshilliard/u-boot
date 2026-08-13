@@ -119,11 +119,43 @@ int hash_digest_wd_lookup(enum HASH_ALGO algo, const void *ibuf,
 	return found ? -EOPNOTSUPP : -ENODEV;
 }
 
+int hash_init_lookup(enum HASH_ALGO algo, struct udevice **devp, void **ctxp)
+{
+	struct udevice *dev;
+	int first_probe_err = 0;
+	bool found = false;
+	int ret;
+
+	for (ret = uclass_first_device_check(UCLASS_HASH, &dev); dev;
+	     ret = uclass_next_device_check(&dev)) {
+		found = true;
+		if (ret) {
+			if (!first_probe_err)
+				first_probe_err = ret;
+			continue;
+		}
+
+		ret = hash_init(dev, algo, ctxp);
+		if (!ret) {
+			*devp = dev;
+			return 0;
+		}
+		if (!hash_op_unsupported(ret))
+			return ret;
+	}
+
+	if (first_probe_err)
+		return first_probe_err;
+
+	return found ? -EOPNOTSUPP : -ENODEV;
+}
+
 int hash_init(struct udevice *dev, enum HASH_ALGO algo, void **ctxp)
 {
 	struct hash_ops *ops = (struct hash_ops *)device_get_ops(dev);
 
-	if (!ops->hash_init)
+	if (!ops->hash_init || !ops->hash_update || !ops->hash_finish ||
+	    !ops->hash_abort)
 		return -ENOSYS;
 
 	return ops->hash_init(dev, algo, ctxp);
@@ -147,6 +179,16 @@ int hash_finish(struct udevice *dev, void *ctx, void *obuf)
 		return -ENOSYS;
 
 	return ops->hash_finish(dev, ctx, obuf);
+}
+
+int hash_abort(struct udevice *dev, void *ctx)
+{
+	struct hash_ops *ops = (struct hash_ops *)device_get_ops(dev);
+
+	if (!ops->hash_abort)
+		return -ENOSYS;
+
+	return ops->hash_abort(dev, ctx);
 }
 
 UCLASS_DRIVER(hash) = {

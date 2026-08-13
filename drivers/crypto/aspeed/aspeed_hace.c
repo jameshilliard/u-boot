@@ -205,6 +205,13 @@ static int aspeed_hace_update(struct udevice *dev, void *ctx, const void *ibuf, 
 	return 0;
 }
 
+static int aspeed_hace_abort(struct udevice *dev, void *ctx)
+{
+	free(ctx);
+
+	return 0;
+}
+
 static int aspeed_hace_finish(struct udevice *dev, void *ctx, void *obuf)
 {
 	int rc = 0;
@@ -269,7 +276,7 @@ static int aspeed_hace_finish(struct udevice *dev, void *ctx, void *obuf)
 	memcpy(obuf, hace_ctx->digest, hash_algo_digest_size(hace_ctx->algo));
 
 free_n_out:
-	free(ctx);
+	aspeed_hace_abort(dev, ctx);
 
 	return rc;
 }
@@ -297,16 +304,20 @@ static int aspeed_hace_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
 				chunk = chunk_sz;
 
 			rc = aspeed_hace_update(dev, ctx, cur, chunk);
-			if (rc)
+			if (rc) {
+				aspeed_hace_abort(dev, ctx);
 				return rc;
+			}
 
 			cur += chunk;
 			schedule();
 		}
 	} else {
 		rc = aspeed_hace_update(dev, ctx, ibuf, ilen);
-		if (rc)
+		if (rc) {
+			aspeed_hace_abort(dev, ctx);
 			return rc;
+		}
 	}
 
 	rc = aspeed_hace_finish(dev, ctx, obuf);
@@ -359,6 +370,7 @@ static const struct hash_ops aspeed_hace_ops = {
 	.hash_init = aspeed_hace_init,
 	.hash_update = aspeed_hace_update,
 	.hash_finish = aspeed_hace_finish,
+	.hash_abort = aspeed_hace_abort,
 	.hash_digest_wd = aspeed_hace_digest_wd,
 	.hash_digest = aspeed_hace_digest,
 };
