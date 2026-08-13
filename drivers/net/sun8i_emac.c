@@ -349,9 +349,8 @@ static int sun8i_phy_init(struct emac_eth_dev *priv, void *dev)
 		return -ENODEV;
 
 	priv->phydev = phydev;
-	phy_config(priv->phydev);
 
-	return 0;
+	return phy_config(priv->phydev);
 }
 
 #define cache_clean_descriptor(desc)					\
@@ -703,8 +702,13 @@ static int sun8i_emac_eth_probe(struct udevice *dev)
 	if (priv->phy_reg)
 		regulator_set_enable(priv->phy_reg, true);
 
-	sun8i_mdio_init(dev->name, dev);
+	ret = sun8i_mdio_init(dev->name, dev);
+	if (ret)
+		return ret;
+
 	priv->bus = miiphy_get_dev_by_name(dev->name);
+	if (!priv->bus)
+		return -ENODEV;
 
 	return sun8i_phy_init(priv, dev);
 }
