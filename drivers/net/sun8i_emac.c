@@ -13,12 +13,10 @@
 #include <cpu_func.h>
 #include <log.h>
 #include <asm/cache.h>
-#include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
 #include <clk.h>
 #include <dm.h>
-#include <fdt_support.h>
 #include <dm/device_compat.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
@@ -123,8 +121,6 @@
 #define EMAC_DESC_CHAIN_SECOND	BIT(24)
 
 #define EMAC_DESC_RX_ERROR_MASK	0x400068db
-
-DECLARE_GLOBAL_DATA_PTR;
 
 struct emac_variant {
 	uint			syscon_offset;
@@ -761,10 +757,8 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 	struct sun8i_eth_pdata *sun8i_pdata = dev_get_plat(dev);
 	struct eth_pdata *pdata = &sun8i_pdata->eth_pdata;
 	struct emac_eth_dev *priv = dev_get_priv(dev);
+	struct ofnode_phandle_args args;
 	phys_addr_t syscon_base;
-	const fdt32_t *reg;
-	int node = dev_of_offset(dev);
-	int offset = 0;
 	int reset_flags = GPIOD_IS_OUT;
 	int ret;
 
@@ -793,20 +787,13 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 		return ret;
 	}
 
-	offset = fdtdec_lookup_phandle(gd->fdt_blob, node, "syscon");
-	if (offset < 0) {
+	ret = dev_read_phandle_with_args(dev, "syscon", NULL, 0, 0, &args);
+	if (ret) {
 		debug("%s: cannot find syscon node\n", __func__);
-		return -EINVAL;
+		return ret;
 	}
 
-	reg = fdt_getprop(gd->fdt_blob, offset, "reg", NULL);
-	if (!reg) {
-		debug("%s: cannot find reg property in syscon node\n",
-		      __func__);
-		return -EINVAL;
-	}
-
-	syscon_base = fdt_translate_address((void *)gd->fdt_blob, offset, reg);
+	syscon_base = ofnode_get_addr(args.node);
 	if (syscon_base == FDT_ADDR_T_NONE) {
 		debug("%s: Cannot find syscon base address\n", __func__);
 		return -EINVAL;
@@ -820,9 +807,10 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 	priv->phyaddr = -1;
 	priv->use_internal_phy = false;
 
-	offset = fdtdec_lookup_phandle(gd->fdt_blob, node, "phy-handle");
-	if (offset >= 0)
-		priv->phyaddr = fdtdec_get_int(gd->fdt_blob, offset, "reg", -1);
+	ret = dev_read_phandle_with_args(dev, "phy-handle", NULL, 0, 0,
+					 &args);
+	if (!ret)
+		priv->phyaddr = ofnode_read_u32_default(args.node, "reg", -1);
 
 	pdata->phy_interface = dev_read_phy_mode(dev);
 	debug("phy interface %d\n", pdata->phy_interface);
@@ -837,33 +825,30 @@ static int sun8i_emac_eth_of_to_plat(struct udevice *dev)
 
 	priv->interface = pdata->phy_interface;
 
-	sun8i_pdata->tx_delay_ps = fdtdec_get_int(gd->fdt_blob, node,
-						  "allwinner,tx-delay-ps", 0);
+	sun8i_pdata->tx_delay_ps =
+		dev_read_u32_default(dev, "allwinner,tx-delay-ps", 0);
 	if (sun8i_pdata->tx_delay_ps < 0 || sun8i_pdata->tx_delay_ps > 700)
 		printf("%s: Invalid TX delay value %d\n", __func__,
 		       sun8i_pdata->tx_delay_ps);
 
-	sun8i_pdata->rx_delay_ps = fdtdec_get_int(gd->fdt_blob, node,
-						  "allwinner,rx-delay-ps", 0);
+	sun8i_pdata->rx_delay_ps =
+		dev_read_u32_default(dev, "allwinner,rx-delay-ps", 0);
 	if (sun8i_pdata->rx_delay_ps < 0 || sun8i_pdata->rx_delay_ps > 3100)
 		printf("%s: Invalid RX delay value %d\n", __func__,
 		       sun8i_pdata->rx_delay_ps);
 
 	sun8i_pdata->leds_active_low =
-		fdtdec_get_bool(gd->fdt_blob, dev_of_offset(dev),
-				"allwinner,leds-active-low");
+		dev_read_bool(dev, "allwinner,leds-active-low");
 
-	if (fdtdec_get_bool(gd->fdt_blob, dev_of_offset(dev),
-			    "snps,reset-active-low"))
+	if (dev_read_bool(dev, "snps,reset-active-low"))
 		reset_flags |= GPIOD_ACTIVE_LOW;
 
 	ret = gpio_request_by_name(dev, "snps,reset-gpio", 0,
 				   &priv->reset_gpio, reset_flags);
 
 	if (ret == 0) {
-		ret = fdtdec_get_int_array(gd->fdt_blob, dev_of_offset(dev),
-					   "snps,reset-delays-us",
-					   sun8i_pdata->reset_delays, 3);
+		ret = dev_read_u32_array(dev, "snps,reset-delays-us",
+					 sun8i_pdata->reset_delays, 3);
 	} else if (ret == -ENOENT) {
 		ret = 0;
 	}
