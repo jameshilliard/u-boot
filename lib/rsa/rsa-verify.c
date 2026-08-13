@@ -25,6 +25,56 @@
 /* Default public exponent for backward compatibility */
 #define RSA_DEFAULT_PUBEXP	65537
 
+static const unsigned char rsa_sha1_der_prefix[] = {
+	0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e,
+	0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14
+};
+
+static const unsigned char rsa_sha256_der_prefix[] = {
+	0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+	0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+	0x00, 0x04, 0x20
+};
+
+static const unsigned char rsa_sha384_der_prefix[] = {
+	0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+	0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05,
+	0x00, 0x04, 0x30
+};
+
+static const unsigned char rsa_sha512_der_prefix[] = {
+	0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+	0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05,
+	0x00, 0x04, 0x40
+};
+
+static int rsa_get_digest_info(const char *name,
+			       const unsigned char **der_prefix)
+{
+	if ((tools_build() || CONFIG_IS_ENABLED(SHA1)) &&
+	    !strcmp(name, "sha1")) {
+		*der_prefix = rsa_sha1_der_prefix;
+		return sizeof(rsa_sha1_der_prefix);
+	}
+	if ((tools_build() || CONFIG_IS_ENABLED(SHA256)) &&
+	    !strcmp(name, "sha256")) {
+		*der_prefix = rsa_sha256_der_prefix;
+		return sizeof(rsa_sha256_der_prefix);
+	}
+	if ((tools_build() || CONFIG_IS_ENABLED(SHA384)) &&
+	    !strcmp(name, "sha384")) {
+		*der_prefix = rsa_sha384_der_prefix;
+		return sizeof(rsa_sha384_der_prefix);
+	}
+	if ((tools_build() || CONFIG_IS_ENABLED(SHA512)) &&
+	    !strcmp(name, "sha512")) {
+		*der_prefix = rsa_sha512_der_prefix;
+		return sizeof(rsa_sha512_der_prefix);
+	}
+
+	return -EINVAL;
+}
+
 /**
  * rsa_verify_padding() - Verify RSA message padding is valid
  *
@@ -33,28 +83,37 @@
  *
  * @msg:	Padded message
  * @pad_len:	Number of expected padding bytes
- * @algo:	Checksum algo structure having information on DER encoding etc.
+ * @algo:	Checksum algorithm used to select the DigestInfo prefix
  * Return: 0 on success, != 0 on failure
  */
 static int rsa_verify_padding(const uint8_t *msg, const int pad_len,
-			      struct checksum_algo *algo)
+			      const struct checksum_algo *algo)
 {
+	const unsigned char *der_prefix;
+	int der_len;
 	int ff_len;
 	int ret;
+
+	der_len = rsa_get_digest_info(algo->name, &der_prefix);
+	if (der_len < 0)
+		return der_len;
+
+	ff_len = pad_len - der_len - 3;
+	if (ff_len < 8)
+		return -EINVAL;
 
 	/* first byte must be 0x00 */
 	ret = *msg++;
 	/* second byte must be 0x01 */
 	ret |= *msg++ ^ 0x01;
 	/* next ff_len bytes must be 0xff */
-	ff_len = pad_len - algo->der_len - 3;
 	ret |= *msg ^ 0xff;
 	ret |= memcmp(msg, msg+1, ff_len-1);
 	msg += ff_len;
 	/* next byte must be 0x00 */
 	ret |= *msg++;
 	/* next der_len bytes must match der_prefix */
-	ret |= memcmp(msg, algo->der_prefix, algo->der_len);
+	ret |= memcmp(msg, der_prefix, der_len);
 
 	return ret;
 }
