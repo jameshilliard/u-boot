@@ -79,8 +79,8 @@ obj-$(CONFIG_BLAKE2) += blake2/blake2b.o
 
 obj-$(CONFIG_$(PHASE_)MD5_LEGACY) += md5.o
 obj-$(CONFIG_$(PHASE_)SHA1_LEGACY) += sha1.o
-obj-$(CONFIG_$(PHASE_)SHA256) += sha256_common.o
-obj-$(CONFIG_$(PHASE_)SHA256_LEGACY) += sha256.o
+obj-$(CONFIG_$(PHASE_)SHA256_LEGACY) += sha256_common.o sha256.o
+obj-$(CONFIG_$(PHASE_)SHA256_MBEDTLS) += sha256_common.o
 obj-$(CONFIG_$(PHASE_)SHA512_LEGACY) += sha512.o
 obj-$(CONFIG_$(PHASE_)SM3) += sm3.o
 

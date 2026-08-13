@@ -261,6 +261,7 @@ static const struct hash_ops cptra_sha_ops = {
 	.hash_init = cptra_sha_init,
 	.hash_update = cptra_sha_update,
 	.hash_finish = cptra_sha_finish,
+	.hash_abort = cptra_sha_abort,
 	.hash_digest_wd = cptra_sha_digest_wd,
 	.hash_digest = cptra_sha_digest,
 };
