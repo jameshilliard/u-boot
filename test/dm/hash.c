@@ -17,6 +17,34 @@
 static int unsupported_calls;
 static int success_calls;
 static int hard_error_calls;
+static int unsupported_init_calls;
+static int success_init_calls;
+static int hard_error_init_calls;
+
+static int hash_test_unsupported_init(struct udevice *dev,
+				      enum HASH_ALGO algo, void **ctxp)
+{
+	unsupported_init_calls++;
+
+	return -EOPNOTSUPP;
+}
+
+static int hash_test_success_init(struct udevice *dev, enum HASH_ALGO algo,
+				  void **ctxp)
+{
+	success_init_calls++;
+	*ctxp = dev;
+
+	return 0;
+}
+
+static int hash_test_hard_error_init(struct udevice *dev,
+				     enum HASH_ALGO algo, void **ctxp)
+{
+	hard_error_init_calls++;
+
+	return -EINVAL;
+}
 
 static int hash_test_unsupported(struct udevice *dev, enum HASH_ALGO algo,
 				 const void *ibuf, const uint32_t ilen,
@@ -47,14 +75,17 @@ static int hash_test_hard_error(struct udevice *dev, enum HASH_ALGO algo,
 }
 
 static const struct hash_ops hash_test_unsupported_ops = {
+	.hash_init = hash_test_unsupported_init,
 	.hash_digest_wd = hash_test_unsupported,
 };
 
 static const struct hash_ops hash_test_success_ops = {
+	.hash_init = hash_test_success_init,
 	.hash_digest_wd = hash_test_success,
 };
 
 static const struct hash_ops hash_test_hard_error_ops = {
+	.hash_init = hash_test_hard_error_init,
 	.hash_digest_wd = hash_test_hard_error,
 };
 
@@ -105,7 +136,9 @@ static int hash_test_bind(const struct driver *drv, const char *name)
 
 static int dm_test_hash_provider_selection(struct unit_test_state *uts)
 {
+	struct udevice *dev;
 	u8 digest[32];
+	void *ctx;
 	int ret;
 
 	ut_assertok(hash_test_unbind_all());
@@ -124,6 +157,15 @@ static int dm_test_hash_provider_selection(struct unit_test_state *uts)
 	for (int i = 0; i < sizeof(digest); i++)
 		ut_asserteq(0x5a, digest[i]);
 
+	unsupported_init_calls = 0;
+	success_init_calls = 0;
+	ret = hash_init_lookup(HASH_ALGO_SHA256, &dev, &ctx);
+	ut_assertok(ret);
+	ut_asserteq(1, unsupported_init_calls);
+	ut_asserteq(1, success_init_calls);
+	ut_asserteq_str("hash-success", dev->name);
+	ut_asserteq_ptr(dev, ctx);
+
 	ut_assertok(hash_test_unbind_all());
 	ut_assertok(hash_test_bind(DM_DRIVER_GET(hash_test_hard_error_drv),
 				   "hash-hard-error"));
@@ -136,6 +178,13 @@ static int dm_test_hash_provider_selection(struct unit_test_state *uts)
 	ut_asserteq(-EINVAL, ret);
 	ut_asserteq(1, hard_error_calls);
 	ut_asserteq(0, success_calls);
+
+	hard_error_init_calls = 0;
+	success_init_calls = 0;
+	ret = hash_init_lookup(HASH_ALGO_SHA256, &dev, &ctx);
+	ut_asserteq(-EINVAL, ret);
+	ut_asserteq(1, hard_error_init_calls);
+	ut_asserteq(0, success_init_calls);
 
 	return 0;
 }

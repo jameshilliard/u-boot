@@ -1342,7 +1342,7 @@ int calculate_hash(const void *data, int data_len, const char *name,
 #endif
 
 	ret = hash_lookup_algo(name, &algo);
-	if (ret < 0) {
+	if (ret < 0 || !algo->hash_func_ws) {
 		debug("Unsupported hash algorithm\n");
 		return -1;
 	}

@@ -4,11 +4,13 @@
  */
 
 #ifndef USE_HOSTCC
+#include <dm.h>
 #include <fdtdec.h>
 #include <asm/byteorder.h>
 #include <linux/errno.h>
 #include <asm/unaligned.h>
 #include <hash.h>
+#include <u-boot/hash.h>
 #else
 #include "fdt_host.h"
 #endif
@@ -20,12 +22,36 @@ int hash_calculate(const char *name,
 		    int region_count, uint8_t *checksum)
 {
 	struct hash_algo *algo;
-	int ret = 0;
+	int ret;
 	void *ctx;
 	int i;
 
 	if (region_count < 1)
 		return -EINVAL;
+
+#ifndef USE_HOSTCC
+	if (CONFIG_IS_ENABLED(DM_HASH)) {
+		enum HASH_ALGO hash_algo = hash_algo_lookup_by_name(name);
+		struct udevice *dev;
+
+		if (hash_algo != HASH_ALGO_INVALID)
+			ret = hash_init_lookup(hash_algo, &dev, &ctx);
+		else
+			ret = -EOPNOTSUPP;
+		if (!ret) {
+			for (i = 0; i < region_count; i++) {
+				ret = hash_update(dev, ctx, region[i].data,
+						  region[i].size);
+				if (ret)
+					return ret;
+			}
+
+			return hash_finish(dev, ctx, checksum);
+		}
+		if (ret != -ENODEV && ret != -EOPNOTSUPP)
+			return ret;
+	}
+#endif
 
 	ret = hash_progressive_lookup_algo(name, &algo);
 	if (ret)
