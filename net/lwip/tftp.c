@@ -18,8 +18,8 @@
 #include <time.h>
 
 #define PROGRESS_PRINT_STEP_BYTES (10 * 1024)
-/* Max time to wait for first data packet from server */
-#define NO_RSP_TIMEOUT_MS 10000
+#define UBOOT_TFTP_TIMEOUT_MS 5000
+#define UBOOT_TFTP_MAX_RETRIES 10
 /* Max time to wait for an incoming TFTP write request */
 #define TFTPSRV_LISTEN_TIMEOUT_MS 50000
 
@@ -126,7 +126,8 @@ static void *tftp_open(const char *fname, const char *mode, u8_t is_write)
 	ctx->wrq_accepted = true;
 	ctx->start_time = get_timer(0);
 	snprintf(ctx->fname, sizeof(ctx->fname), "%s", fname);
-	restart_transfer_timeout(ctx);
+	if (ctx->is_server)
+		restart_transfer_timeout(ctx);
 
 	printf("\nReceiving '%s' mode '%s'\n", fname, mode);
 	puts("Loading: ");
@@ -190,7 +191,8 @@ static int tftp_write(void *handle, struct pbuf *p)
 		}
 	}
 
-	restart_transfer_timeout(ctx);
+	if (ctx->is_server)
+		restart_transfer_timeout(ctx);
 
 	return 0;
 }
@@ -215,23 +217,15 @@ static const struct tftp_context tftp_context = {
 	tftp_error
 };
 
-static void no_response(void *arg)
-{
-	struct tftp_ctx *ctx = (struct tftp_ctx *)arg;
-
-	if (ctx->size)
-		return;
-
-	printf("Timeout!\n");
-	ctx->done = FAILURE;
-}
-
 static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
-		     ip_addr_t srvip, uint16_t srvport)
+		     ip_addr_t srvip, u16 srvport, u16 srcport,
+		     u32 timeout_msecs, u32 max_retries)
 {
 	int blksize = CONFIG_TFTP_BLOCKSIZE;
 	struct tftp_ctx ctx;
 	const char *ep;
+	bool initialized = false;
+	int ret = -1;
 	err_t err;
 
 	if (!fname || addr == 0)
@@ -240,14 +234,9 @@ static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
 	if (!srvport)
 		srvport = TFTP_PORT;
 
+	memset(&ctx, 0, sizeof(ctx));
 	ctx.done = NOT_DONE;
-	ctx.size = 0;
-	ctx.block_count = 0;
-	ctx.hash_count = 0;
 	ctx.daddr = addr;
-	ctx.is_server = false;
-	ctx.wrq_accepted = false;
-	ctx.fname[0] = '\0';
 
 	printf("Using %s device\n", net->dev->name);
 	printf("TFTP from server %s; our IP address is %s\n",
@@ -261,6 +250,21 @@ static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
 		log_err("tftp_init_client err: %d\n", err);
 		return -1;
 	}
+	initialized = true;
+
+	if (srcport) {
+		err = tftp_client_bind(srcport);
+		if (err != ERR_OK) {
+			log_err("tftp_client_bind err: %d\n", err);
+			goto out_cleanup;
+		}
+	}
+
+	err = tftp_client_set_timeout(timeout_msecs, max_retries);
+	if (err != ERR_OK) {
+		log_err("tftp_client_set_timeout err: %d\n", err);
+		goto out_cleanup;
+	}
 
 	ep = env_get("tftpblocksize");
 	if (ep)
@@ -272,11 +276,9 @@ static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
 	/* might return different errors, like routing problems */
 	if (err != ERR_OK) {
 		printf("tftp_get() error %d\n", err);
-		tftp_cleanup();
-		return -1;
+		goto out_cleanup;
 	}
 
-	sys_timeout(NO_RSP_TIMEOUT_MS, no_response, &ctx);
 	while (!ctx.done) {
 		net_lwip_poll();
 		if (ctrlc()) {
@@ -285,9 +287,10 @@ static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
 			break;
 		}
 	}
-	sys_untimeout(no_response, (void *)&ctx);
 
-	tftp_cleanup();
+out_cleanup:
+	if (initialized)
+		tftp_cleanup();
 
 	if (ctx.done == SUCCESS) {
 		if (env_set_hex("fileaddr", addr)) {
@@ -296,10 +299,10 @@ static int tftp_loop(struct net_lwip_ctx *net, ulong addr, char *fname,
 		}
 		efi_set_bootdev("Net", "", fname, map_sysmem(addr, 0),
 				ctx.size);
-		return 0;
+		ret = 0;
 	}
 
-	return -1;
+	return ret;
 }
 
 static void no_request(void *arg)
@@ -429,17 +432,23 @@ out:
 int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	struct net_lwip_ctx net = {};
+	u32 timeout_msecs = UBOOT_TFTP_TIMEOUT_MS;
+	u32 max_retries = UBOOT_TFTP_MAX_RETRIES;
 	int ret = CMD_RET_SUCCESS;
 	char *arg = NULL;
+	char *arg_copy = NULL;
 	char *words[3] = { };
 	char *fname = NULL;
 	char *server_ip = NULL;
 	char *server_port = NULL;
 	char *end;
 	ip_addr_t srvip;
+	u16 srcport = 0;
 	u16 port = TFTP_PORT;
 	ulong laddr;
 	ulong addr;
+	const char *ep;
+	long value;
 	int i;
 
 	laddr = env_get_ulong("loadaddr", 16, image_load_addr);
@@ -460,12 +469,22 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			laddr = addr;
 			fname = env_get("bootfile");
 		} else {
-			arg = strdup(argv[1]);
+			arg_copy = strdup(argv[1]);
+			arg = arg_copy;
+			if (!arg) {
+				ret = CMD_RET_FAILURE;
+				goto out;
+			}
 		}
 		break;
 	case 3:
 		laddr = hextoul(argv[1], NULL);
-		arg = strdup(argv[2]);
+		arg_copy = strdup(argv[2]);
+		arg = arg_copy;
+		if (!arg) {
+			ret = CMD_RET_FAILURE;
+			goto out;
+		}
 		break;
 	default:
 		ret = CMD_RET_USAGE;
@@ -478,8 +497,13 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	if (*arg) {
 		/* Parse [ip:[port:]]fname */
 		i = 0;
-		while ((*(words + i) = strsep(&arg, ":")))
+		while (i < ARRAY_SIZE(words) &&
+		       (words[i] = strsep(&arg, ":")))
 			i++;
+		if (arg) {
+			ret = CMD_RET_USAGE;
+			goto out;
+		}
 
 		switch (i) {
 		case 3:
@@ -509,8 +533,50 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 		goto out;
 	}
 
-	if (server_port)
-		port = dectoul(server_port, NULL);
+	if (!server_port)
+		server_port = env_get("tftpdstp");
+	if (server_port) {
+		value = simple_strtol(server_port, NULL, 10);
+		if (value < 0 || value > 0xffff) {
+			log_err("error: invalid TFTP destination port\n");
+			ret = CMD_RET_FAILURE;
+			goto out;
+		}
+		port = value;
+	}
+
+	ep = env_get("tftpsrcp");
+	if (ep) {
+		value = simple_strtol(ep, NULL, 10);
+		if (value < 0 || value > 0xffff) {
+			log_err("error: invalid TFTP source port\n");
+			ret = CMD_RET_FAILURE;
+			goto out;
+		}
+		srcport = value;
+	}
+
+	if (IS_ENABLED(CONFIG_NET_TFTP_VARS)) {
+		ep = env_get("tftptimeout");
+		if (ep)
+			timeout_msecs = simple_strtoul(ep, NULL, 10);
+		if (timeout_msecs < 1000) {
+			printf("TFTP timeout (%u ms) too low, set min = 1000 ms\n",
+			       timeout_msecs);
+			timeout_msecs = 1000;
+		}
+
+		ep = env_get("tftptimeoutcountmax");
+		if (ep) {
+			value = simple_strtol(ep, NULL, 10);
+			if (value < 0) {
+				printf("TFTP timeout count max (%ld) negative, set to 0\n",
+				       value);
+				value = 0;
+			}
+			max_retries = value;
+		}
+	}
 
 	if (!ipaddr_aton(server_ip, &srvip)) {
 		log_err("error: ipaddr_aton\n");
@@ -535,13 +601,13 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 		goto out;
 	}
 
-	if (tftp_loop(&net, laddr, fname, srvip, port) < 0)
+	if (tftp_loop(&net, laddr, fname, srvip, port, srcport,
+		      timeout_msecs, max_retries) < 0)
 		ret = CMD_RET_FAILURE;
 	else
 		image_load_addr = laddr;
 out:
 	net_lwip_stop(&net);
-	if (arg != net_boot_file_name)
-		free(arg);
+	free(arg_copy);
 	return ret;
 }
