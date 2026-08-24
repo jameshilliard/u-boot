@@ -34,7 +34,7 @@ hostIPaddr
 
 filename
     path of the file to be written. If not provided, the client's IP address is
-    used to construct a default file name, e.g. C0.A8.00.28.img for IP address
+    used to construct a default file name, e.g. C0A80028.img for IP address
     192.168.0.40.
 
 Example
@@ -74,8 +74,12 @@ The command is only available if CONFIG_CMD_TFTPPUT=y.
 CONFIG_TFTP_BLOCKSIZE defines the size of the TFTP blocks sent. It defaults
 to 1468 matching an ethernet MTU of 1500.
 
-CONFIG_TFTP_WINDOWSIZE can be used to set the TFTP window size of transmits
-after which an ACK response is required. The window size defaults to 1.
+With the legacy network stack, CONFIG_TFTP_WINDOWSIZE can be used to set the
+TFTP window size of transmits after which an ACK response is required. The
+window size defaults to 1. The lwIP TFTP client currently uses a window size
+of 1.
 
-If CONFIG_TFTP_TSIZE=y, the progress bar is limited to 50 '#' characters.
-Otherwise an '#' is written per UDP package which may decrease performance.
+With the legacy network stack, CONFIG_TFTP_TSIZE=y limits the progress bar to
+50 '#' characters. Otherwise an '#' is written per UDP package which may
+decrease performance. The lwIP client always advertises the upload size and
+limits the progress bar to 50 '#' characters.
