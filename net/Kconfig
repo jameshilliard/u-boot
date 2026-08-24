@@ -46,11 +46,11 @@ config NETCONSOLE
 	  Support the 'nc' input/output device for networked console.
 	  See doc/usage/netconsole.rst for details.
 
-if NET_LEGACY
-
 config ARP_TIMEOUT
 	int "Milliseconds before trying ARP again"
 	default 5000
+
+if NET_LEGACY
 
 config NET_RETRY_COUNT
 	int "Number of timeouts before giving up"
