@@ -95,13 +95,13 @@ struct tftp_state {
   struct udp_pcb *upcb;
   ip_addr_t addr;
   u16_t port;
-  int timer;
-  int last_pkt;
   u16_t blknum;
   u16_t blksize;
   u32_t tsize;
   u32_t put_tsize;
-  u8_t retries;
+  u32_t timeout_msecs;
+  u32_t max_retries;
+  u32_t retries;
   u8_t mode_write;
   u8_t tftp_mode;
   bool wait_oack;
@@ -116,6 +116,8 @@ static void tftp_tmr(void *arg);
 static void tftp_req_tmr(void *arg);
 static const char *mode_to_string(enum tftp_transfer_mode mode);
 static u16_t payload_size(void);
+
+static const char tftp_timeout_msg[] = "Transfer timeout";
 
 static void
 clear_req(void)
@@ -151,6 +153,23 @@ close_handle(void)
     tftp_state.handle = NULL;
     LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: closing\n"));
   }
+}
+
+static void
+transfer_activity(void)
+{
+  tftp_state.retries = 0;
+  sys_untimeout(tftp_tmr, NULL);
+  sys_timeout(tftp_state.timeout_msecs, tftp_tmr, NULL);
+}
+
+static void
+transfer_timed_out(void)
+{
+  LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: timeout\n"));
+  tftp_state.ctx->error(tftp_state.handle, -1, tftp_timeout_msg,
+                        sizeof(tftp_timeout_msg) - 1);
+  close_handle();
 }
 
 static struct pbuf*
@@ -398,6 +417,26 @@ parse_u32_option(const char *str, u32_t *value)
   return 1;
 }
 
+static int
+is_expected_response(struct pbuf *p, u16_t opcode)
+{
+  u16_t *sbuf = (u16_t *) p->payload;
+
+  if (opcode == PP_HTONS(TFTP_ERROR))
+    return 1;
+  if (opcode == PP_HTONS(TFTP_OACK))
+    return tftp_state.wait_oack;
+  if (p->len < TFTP_HEADER_LENGTH)
+    return 0;
+
+  if (tftp_req.opcode == TFTP_RRQ)
+    return (opcode == PP_HTONS(TFTP_DATA)) &&
+      (lwip_ntohs(sbuf[1]) == tftp_state.blknum);
+
+  return (opcode == PP_HTONS(TFTP_ACK)) &&
+    (lwip_ntohs(sbuf[1]) == tftp_state.blknum);
+}
+
 static void
 tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
@@ -407,20 +446,40 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
   LWIP_UNUSED_ARG(arg);
   LWIP_UNUSED_ARG(upcb);
 
+  if (p->len < sizeof(*sbuf)) {
+    pbuf_free(p);
+    return;
+  }
+
   if (((tftp_state.port != 0) && (port != tftp_state.port)) ||
       (!ip_addr_isany_val(tftp_state.addr) && !ip_addr_eq(&tftp_state.addr, addr))) {
-    send_error(addr, port, TFTP_ERROR_ACCESS_VIOLATION, "Only one connection at a time is supported");
+    send_error(addr, port, TFTP_ERROR_UNKNOWN_TRFR_ID, "Unknown transfer ID");
     pbuf_free(p);
     return;
   }
 
   opcode = sbuf[0];
+  if (((opcode == PP_HTONS(TFTP_DATA)) ||
+       (opcode == PP_HTONS(TFTP_ACK)) ||
+       (opcode == PP_HTONS(TFTP_ERROR))) &&
+      (p->len < TFTP_HEADER_LENGTH)) {
+    send_error(addr, port, TFTP_ERROR_ILLEGAL_OPERATION,
+               "Packet too short");
+    pbuf_free(p);
+    return;
+  }
 
-  tftp_state.last_pkt = tftp_state.timer;
-  tftp_state.retries = 0;
+  if (tftp_req.fname) {
+    if (!is_expected_response(p, (u16_t)opcode)) {
+      send_error(addr, port, TFTP_ERROR_ILLEGAL_OPERATION,
+                 "Unexpected response");
+      pbuf_free(p);
+      return;
+    }
 
-  if (tftp_req.fname)
+    tftp_state.port = port;
     clear_req();
+  }
 
   switch (opcode) {
     case PP_HTONS(TFTP_RRQ): /* fall through */
@@ -440,8 +499,6 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
         send_error(addr, port, TFTP_ERROR_ACCESS_VIOLATION, "TFTP server not enabled");
         break;
       }
-
-      sys_timeout(TFTP_TIMER_MSECS, tftp_tmr, NULL);
 
       /* find \0 in pbuf -> end of filename string */
       filename_end_offset = pbuf_memfind(p, &tftp_null, sizeof(tftp_null), 2);
@@ -473,6 +530,7 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
 
       ip_addr_copy(tftp_state.addr, *addr);
       tftp_state.port = port;
+      transfer_activity();
 
       if (opcode == PP_HTONS(TFTP_WRQ)) {
         tftp_state.mode_write = 1;
@@ -500,17 +558,17 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
       }
 
       blknum = lwip_ntohs(sbuf[1]);
-      if (tftp_state.wait_oack) {
-        /*
-         * Data received while we are expecting an OACK for our tsize option.
-         * This means the server doesn't support it, let's switch back to the
-         * default block size.
-         */
-        tftp_state.tsize = 0;
-        tftp_state.blksize = 0;
-        tftp_state.wait_oack = false;
-      }
       if (blknum == tftp_state.blknum) {
+        transfer_activity();
+        if (tftp_state.wait_oack) {
+          /*
+           * Data received while we are expecting an OACK. This means the
+           * server doesn't support options, so use the default block size.
+           */
+          tftp_state.tsize = 0;
+          tftp_state.blksize = 0;
+          tftp_state.wait_oack = false;
+        }
         pbuf_remove_header(p, TFTP_HEADER_LENGTH);
 
         ret = tftp_state.ctx->write(tftp_state.handle, p);
@@ -528,6 +586,7 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
         }
       } else if ((u16_t)(blknum + 1) == tftp_state.blknum) {
         /* retransmit of previous block, ack again (casting to u16_t to care for overflow) */
+        transfer_activity();
         send_ack(addr, port, blknum);
       } else {
         send_error(addr, port, TFTP_ERROR_UNKNOWN_TRFR_ID, "Wrong block number");
@@ -550,12 +609,20 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
       }
 
       blknum = lwip_ntohs(sbuf[1]);
-      if ((blknum == 0) && (tftp_state.blknum == 0) && tftp_state.wait_oack) {
-        /* The server ignored the options in our write request. */
-        tftp_state.blksize = 0;
-        tftp_state.wait_oack = false;
-      }
-      if (blknum != tftp_state.blknum) {
+      if (blknum == tftp_state.blknum) {
+        transfer_activity();
+        if ((blknum == 0) && tftp_state.wait_oack) {
+          /* The server ignored the options in our write request. */
+          tftp_state.blksize = 0;
+          tftp_state.wait_oack = false;
+        }
+      } else if (((u16_t)(blknum + 1) == tftp_state.blknum) &&
+                 (tftp_state.last_data != NULL)) {
+        /* A duplicate ACK means the current DATA packet was lost. */
+        transfer_activity();
+        resend_data(addr, port);
+        break;
+      } else {
         send_error(addr, port, TFTP_ERROR_UNKNOWN_TRFR_ID, "Wrong block number");
         break;
       }
@@ -578,7 +645,8 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
     case PP_HTONS(TFTP_ERROR):
       if (tftp_state.handle != NULL) {
         pbuf_remove_header(p, TFTP_HEADER_LENGTH);
-        tftp_state.ctx->error(tftp_state.handle, sbuf[1], (const char*)p->payload, p->len);
+        tftp_state.ctx->error(tftp_state.handle, lwip_ntohs(sbuf[1]),
+                              (const char*)p->payload, p->len);
         close_handle();
       }
       break;
@@ -587,6 +655,33 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
       const char *tsizeoptval = find_option(p, "tsize");
       u32_t srv_blksize = 0;
       u32_t srv_tsize = 0;
+
+      if (tftp_state.handle == NULL) {
+        send_error(addr, port, TFTP_ERROR_ACCESS_VIOLATION, "No connection");
+        break;
+      }
+      if (!tftp_state.wait_oack) {
+        if (((tftp_state.tftp_mode & LWIP_TFTP_MODE_CLIENT) != 0) &&
+            (tftp_state.blknum == 1)) {
+          if ((tftp_state.mode_write == 0) &&
+              (tftp_state.last_data != NULL)) {
+            transfer_activity();
+            resend_data(addr, port);
+            break;
+          }
+          if ((tftp_state.mode_write != 0) &&
+              (tftp_state.last_data == NULL)) {
+            transfer_activity();
+            send_ack(addr, port, 0);
+            break;
+          }
+        }
+        send_error(addr, port, TFTP_ERROR_ILLEGAL_OPERATION,
+                   "Unexpected OACK");
+        break;
+      }
+
+      transfer_activity();
       tftp_state.wait_oack = false;
       if (blksizeoptval) {
         if (!parse_u32_option(blksizeoptval, &srv_blksize) ||
@@ -640,46 +735,54 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
 static void
 tftp_tmr(void *arg)
 {
-  LWIP_UNUSED_ARG(arg);
+  err_t ret;
 
-  tftp_state.timer++;
+  LWIP_UNUSED_ARG(arg);
 
   if (tftp_state.handle == NULL) {
     return;
   }
 
-  sys_timeout(TFTP_TIMER_MSECS, tftp_tmr, NULL);
-
-  if ((tftp_state.timer - tftp_state.last_pkt) > (TFTP_TIMEOUT_MSECS / TFTP_TIMER_MSECS)) {
-    if ((tftp_state.last_data != NULL) && (tftp_state.retries < TFTP_MAX_RETRIES)) {
-      LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: timeout, retrying\n"));
-      resend_data(&tftp_state.addr, tftp_state.port);
-      tftp_state.retries++;
-    } else {
-      LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: timeout\n"));
-      close_handle();
-    }
+  if (tftp_state.retries >= tftp_state.max_retries) {
+    transfer_timed_out();
+    return;
   }
+
+  LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: timeout, retrying\n"));
+  if (tftp_state.last_data != NULL)
+    ret = resend_data(&tftp_state.addr, tftp_state.port);
+  else if (tftp_state.mode_write != 0)
+    ret = send_ack(&tftp_state.addr, tftp_state.port,
+                   (u16_t)(tftp_state.blknum - 1));
+  else
+    ret = ERR_MEM;
+  LWIP_UNUSED_ARG(ret);
+
+  tftp_state.retries++;
+  sys_timeout(tftp_state.timeout_msecs, tftp_tmr, NULL);
 }
 
 static void
 tftp_req_tmr(void *arg)
 {
+  err_t ret;
+
+  LWIP_UNUSED_ARG(arg);
+
   if (tftp_state.handle == NULL) {
     return;
   }
 
-  sys_timeout(TFTP_TIMER_MSECS, tftp_req_tmr, NULL);
-
-  if (tftp_state.retries < TFTP_MAX_RETRIES) {
-    LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: req timeout, retrying\n"));
-    resend_request();
-    tftp_state.retries++;
-  } else {
-    LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: req timeout\n"));
-    tftp_state.ctx->error(tftp_state.handle, -1, "Request timeout", strlen("Request timeout"));
-    close_handle();
+  if (tftp_state.retries >= tftp_state.max_retries) {
+    transfer_timed_out();
+    return;
   }
+
+  LWIP_DEBUGF(TFTP_DEBUG | LWIP_DBG_STATE, ("tftp: req timeout, retrying\n"));
+  ret = resend_request();
+  LWIP_UNUSED_ARG(ret);
+  tftp_state.retries++;
+  sys_timeout(tftp_state.timeout_msecs, tftp_req_tmr, NULL);
 }
 
 /**
@@ -709,10 +812,11 @@ tftp_init_common(u8_t mode, const struct tftp_context *ctx)
   tftp_state.handle    = NULL;
   tftp_state.port      = 0;
   tftp_state.ctx       = ctx;
-  tftp_state.timer     = 0;
   tftp_state.last_data = NULL;
   tftp_state.upcb      = pcb;
   tftp_state.tftp_mode = mode;
+  tftp_state.timeout_msecs = TFTP_TIMEOUT_MSECS;
+  tftp_state.max_retries = TFTP_MAX_RETRIES;
 
   udp_recv(pcb, tftp_recv, NULL);
 
@@ -772,6 +876,23 @@ tftp_client_set_tsize(u32_t tsize)
 }
 
 /** @ingroup tftp
+ * Set the TFTP client retransmission timeout and maximum retry count.
+ * @param timeout_msecs Retransmission timeout in milliseconds
+ * @param max_retries Maximum number of retransmissions
+ * @return ERR_OK on success, ERR_ARG if timeout_msecs is zero
+ */
+err_t
+tftp_client_set_timeout(u32_t timeout_msecs, u32_t max_retries)
+{
+  if (timeout_msecs == 0)
+    return ERR_ARG;
+
+  tftp_state.timeout_msecs = timeout_msecs;
+  tftp_state.max_retries = max_retries;
+  return ERR_OK;
+}
+
+/** @ingroup tftp
  * Deinitialize ("turn off") TFTP client/server.
  */
 void tftp_cleanup(void)
@@ -797,18 +918,34 @@ mode_to_string(enum tftp_transfer_mode mode)
   return NULL;
 }
 
-err_t
+static err_t
 start_send_requests(const ip_addr_t *addr, u16_t port, u16_t opcode, const char* fname, enum tftp_transfer_mode mode)
 {
+  err_t ret;
+
   tftp_req.addr = *addr;
   tftp_req.port = port;
   tftp_req.opcode = opcode;
   tftp_req.fname = strdup(fname);
   tftp_req.mode = mode;
-  if (!tftp_req.fname)
+  if (!tftp_req.fname) {
+    tftp_state.handle = NULL;
     return ERR_MEM;
-  sys_timeout(TFTP_TIMER_MSECS, tftp_req_tmr, NULL);
-  return resend_request();
+  }
+
+  ip_addr_copy(tftp_state.addr, *addr);
+  tftp_state.port = 0;
+  tftp_state.retries = 0;
+  ret = resend_request();
+  if (ret != ERR_OK) {
+    clear_req();
+    ip_addr_set_any(0, &tftp_state.addr);
+    tftp_state.handle = NULL;
+    return ret;
+  }
+
+  sys_timeout(tftp_state.timeout_msecs, tftp_req_tmr, NULL);
+  return ERR_OK;
 }
 
 err_t
