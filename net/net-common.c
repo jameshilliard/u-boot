@@ -2,6 +2,7 @@
 
 #include <dm/uclass.h>
 #include <env.h>
+#include <malloc.h>
 #include <net-common.h>
 #include <linux/time.h>
 #include <rtc.h>
@@ -113,6 +114,53 @@ int tftpb_run(ulong addr, const char *fname)
 		return log_msg_ret("res", -ENOENT);
 
 	return 0;
+}
+
+int tftpb_run_timeout(ulong addr, const char *fname, ulong timeout_ms,
+		      int max_retries)
+{
+	const char *timeout_env = env_get("tftptimeout");
+	const char *retries_env = env_get("tftptimeoutcountmax");
+	char *saved_timeout = NULL;
+	char *saved_retries = NULL;
+	int restore_ret = 0;
+	int ret;
+
+	if (timeout_ms < 1000 || max_retries < 0)
+		return -EINVAL;
+
+	if (timeout_env) {
+		saved_timeout = strdup(timeout_env);
+		if (!saved_timeout)
+			return -ENOMEM;
+	}
+	if (retries_env) {
+		saved_retries = strdup(retries_env);
+		if (!saved_retries) {
+			ret = -ENOMEM;
+			goto out_free;
+		}
+	}
+
+	ret = env_set_ulong("tftptimeout", timeout_ms);
+	if (ret)
+		goto out_free;
+	ret = env_set_ulong("tftptimeoutcountmax", max_retries);
+	if (ret)
+		goto out_restore_timeout;
+
+	ret = tftpb_run(addr, fname);
+
+	if (env_set("tftptimeoutcountmax", saved_retries))
+		restore_ret = -EINVAL;
+out_restore_timeout:
+	if (env_set("tftptimeout", saved_timeout))
+		restore_ret = -EINVAL;
+out_free:
+	free(saved_retries);
+	free(saved_timeout);
+
+	return ret ?: restore_ret;
 }
 
 #endif

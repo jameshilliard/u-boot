@@ -169,6 +169,7 @@ static void tftp_close(void *handle)
 		return;
 	}
 	ctx->done = SUCCESS;
+	net_boot_file_size = ctx->size;
 
 	tftp_tsize = tftp_transfer_size(ctx);
 	if (tftp_tsize) {
@@ -313,6 +314,7 @@ static int tftp_loop(struct net_lwip_ctx *net,
 	ctx.daddr = addr;
 	ctx.total_size = size;
 	ctx.upload = operation == TFTP_UPLOAD;
+	net_boot_file_size = 0;
 
 	printf("Using %s device\n", net->dev->name);
 	printf("TFTP %s server %s; our IP address is %s\n",
@@ -426,6 +428,7 @@ static int tftpsrv_loop(struct net_lwip_ctx *net, ulong addr)
 	ctx.done = NOT_DONE;
 	ctx.daddr = addr;
 	ctx.is_server = true;
+	net_boot_file_size = 0;
 
 	printf("Using %s device\n", net->dev->name);
 	printf("Listening for TFTP transfer on %s\n", ipaddr);

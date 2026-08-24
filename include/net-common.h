@@ -536,6 +536,18 @@ int do_dhcp(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[]);
 int tftpb_run(ulong addr, const char *fname);
 
 /**
+ * tftpb_run_timeout() - Run TFTP with temporary timeout settings
+ *
+ * @addr: Address to load the file into
+ * @fname: Filename of file to load
+ * @timeout_ms: Retransmission timeout in milliseconds, at least 1000
+ * @max_retries: Maximum number of retransmissions
+ * Return: 0 if successful, otherwise a negative error code
+ */
+int tftpb_run_timeout(ulong addr, const char *fname, ulong timeout_ms,
+		      int max_retries);
+
+/**
  * do_ping - Run the ping command
  *
  * @cmdtp: Unused
