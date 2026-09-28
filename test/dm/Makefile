@@ -57,6 +57,7 @@ obj-y += lwip.o
 endif
 ifeq ($(CONFIG_NET_LWIP)$(CONFIG_CMD_TFTPBOOT),yy)
 obj-y += lwip_tftp.o
+obj-y += lwip_net_loop.o
 endif
 ifeq ($(CONFIG_NET_LWIP)$(CONFIG_CMD_DHCP),yy)
 obj-y += lwip_dhcp.o
