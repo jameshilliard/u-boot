@@ -513,7 +513,8 @@ static int sun8i_emac_eth_recv(struct udevice *dev, int flags, uchar **packetp)
 
 	*packetp = (uchar *)(ulong)desc_p->buf_addr;
 
-	return length;
+	/* The descriptor length includes the FCS, not part of the payload. */
+	return length - ETH_FCS_LEN;
 }
 
 static int sun8i_emac_eth_send(struct udevice *dev, void *packet, int length)
