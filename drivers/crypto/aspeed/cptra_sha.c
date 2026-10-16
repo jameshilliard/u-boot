@@ -5,6 +5,7 @@
 #include <asm/io.h>
 #include <config.h>
 #include <dm.h>
+#include <limits.h>
 #include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/iopoll.h>
@@ -36,6 +37,8 @@ enum cptra_sha_modes {
 struct cptra_sha_ctx {
 	enum HASH_ALGO algo;
 	uint32_t dgst_len;
+	u32 pending;
+	u32 pending_len;
 };
 
 struct cptra_sha {
@@ -75,8 +78,11 @@ static int cptra_sha_init(struct udevice *dev, enum HASH_ALGO algo, void **ctxp)
 	cs = dev_get_priv(dev);
 
 	/* get CPTRA SHA lock */
-	if (readl_poll_timeout(cs->regs + CPTRA_SHA_LOCK, reg, reg == 0, 1000000))
-		return -EBUSY;
+	if (readl_poll_timeout(cs->regs + CPTRA_SHA_LOCK, reg, reg == 0,
+			       1000000)) {
+		rc = -EBUSY;
+		goto free_n_out;
+	}
 
 	/* zero clear SHA */
 	writel(CPTRA_SHA_CTRL_ZEROIZE, cs->regs + CPTRA_SHA_CTRL);
@@ -102,33 +108,42 @@ free_n_out:
 
 static int cptra_sha_update(struct udevice *dev, void *ctx, const void *ibuf, uint32_t ilen)
 {
+	struct cptra_sha_ctx *cs_ctx = ctx;
 	struct cptra_sha *cs;
-	uint32_t din_be;
 	uint32_t dlen_sum;
-	uint8_t *p8;
-	uint32_t i;
+	const u8 *p8 = ibuf;
+
+	if (!ilen)
+		return 0;
 
 	cs = dev_get_priv(dev);
 
 	/* update length */
-	dlen_sum = readl(cs->regs + CPTRA_SHA_DLEN) + ilen;
-	writel(dlen_sum, cs->regs + CPTRA_SHA_DLEN);
+	dlen_sum = readl(cs->regs + CPTRA_SHA_DLEN);
+	if (ilen > U32_MAX - dlen_sum)
+		return -EOVERFLOW;
+	writel(dlen_sum + ilen, cs->regs + CPTRA_SHA_DLEN);
 
-	din_be = 0;
-	for (i = 0, p8 = (uint8_t *)ibuf; i < ilen; ++i) {
-		if (i && (i % sizeof(din_be) == 0)) {
-			writel(din_be, cs->regs + CPTRA_SHA_DATAIN);
-			din_be = 0;
+	/* Preserve incomplete words across update boundaries. */
+	while (ilen--) {
+		cs_ctx->pending = (cs_ctx->pending << 8) | *p8++;
+		if (++cs_ctx->pending_len == sizeof(cs_ctx->pending)) {
+			writel(cs_ctx->pending, cs->regs + CPTRA_SHA_DATAIN);
+			cs_ctx->pending = 0;
+			cs_ctx->pending_len = 0;
 		}
-
-		din_be <<= 8;
-		din_be |= p8[i];
 	}
 
-	if (i % sizeof(din_be))
-		din_be <<= (8 * (sizeof(din_be) - (i % sizeof(din_be))));
+	return 0;
+}
 
-	writel(din_be, cs->regs + CPTRA_SHA_DATAIN);
+static int cptra_sha_abort(struct udevice *dev, void *ctx)
+{
+	struct cptra_sha *cs = dev_get_priv(dev);
+
+	writel(CPTRA_SHA_CTRL_ZEROIZE, cs->regs + CPTRA_SHA_CTRL);
+	writel(0x1, cs->regs + CPTRA_SHA_LOCK);
+	free(ctx);
 
 	return 0;
 }
@@ -142,6 +157,16 @@ static int cptra_sha_finish(struct udevice *dev, void *ctx, void *obuf)
 
 	cs = dev_get_priv(dev);
 	cs_ctx = (struct cptra_sha_ctx *)ctx;
+
+	if (cs_ctx->pending_len) {
+		/* Only the final word may contain bytes beyond DLEN. */
+		writel(cs_ctx->pending << (8 * (sizeof(cs_ctx->pending) -
+					       cs_ctx->pending_len)),
+		       cs->regs + CPTRA_SHA_DATAIN);
+	} else if (!readl(cs->regs + CPTRA_SHA_DLEN)) {
+		/* An empty stream still needs a DATAIN write to leave idle. */
+		writel(0, cs->regs + CPTRA_SHA_DATAIN);
+	}
 
 	/* trigger SHA calculation */
 	writel(0x1, cs->regs + CPTRA_SHA_EXEC);
@@ -158,12 +183,7 @@ static int cptra_sha_finish(struct udevice *dev, void *ctx, void *obuf)
 	for (i = 0; i < (cs_ctx->dgst_len / sizeof(*p32)); ++i, p32++)
 		*p32 = be32_to_cpu(readl(cs->regs + CPTRA_SHA_DIGEST(i)));
 
-	/* release CPTRA SHA lock */
-	writel(0x1, cs->regs + CPTRA_SHA_LOCK);
-
-	free(cs_ctx);
-
-	return 0;
+	return cptra_sha_abort(dev, ctx);
 }
 
 static int cptra_sha_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
@@ -189,16 +209,20 @@ static int cptra_sha_digest_wd(struct udevice *dev, enum HASH_ALGO algo,
 				chunk = chunk_sz;
 
 			rc = cptra_sha_update(dev, ctx, cur, chunk);
-			if (rc)
+			if (rc) {
+				cptra_sha_abort(dev, ctx);
 				return rc;
+			}
 
 			cur += chunk;
 			schedule();
 		}
 	} else {
 		rc = cptra_sha_update(dev, ctx, ibuf, ilen);
-		if (rc)
+		if (rc) {
+			cptra_sha_abort(dev, ctx);
 			return rc;
+		}
 	}
 
 	rc = cptra_sha_finish(dev, ctx, obuf);
