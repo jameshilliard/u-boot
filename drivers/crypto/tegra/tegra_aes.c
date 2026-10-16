@@ -64,7 +64,7 @@ static_assert(sizeof(void *) == sizeof(u32));
 #define TEGRA_AES_SECURE_KEY_INDEX_SHIFT	20
 #define TEGRA_AES_SECURE_KEY_INDEX_FIELD	(0x1f << TEGRA_AES_SECURE_KEY_INDEX_SHIFT)
 #define TEGRA_AES_SECURE_CTR_CNT_SHIFT		16
-#define TEGRA_AES_SECURE_CTR_CNT_FIELD		(0xffff << TEGRA_AES_SECURE_CTR_CNT_SHIFT)
+#define TEGRA_AES_SECURE_CTR_CNT_FIELD		(0xffffU << TEGRA_AES_SECURE_CTR_CNT_SHIFT)
 #define TEGRA_AES_BSE_MODE_FIELD		0x1f
 #define TEGRA_AES_BSE_LITTLE_ENDIAN_FIELD	BIT(10)
 #define TEGRA_AES_CMDQ_OPCODE_SHIFT		26
@@ -92,6 +92,8 @@ static_assert(sizeof(void *) == sizeof(u32));
 #define TEGRA_AES_MODE_UPDATE_IV		BIT(2)
 #define TEGRA_AES_MODE_HASH			BIT(3)
 
+#define TEGRA_AES_BSEV				BIT(0)
+
 struct tegra_aes_priv {
 	void *regs;
 	void *iram_addr;
@@ -102,7 +104,7 @@ struct tegra_aes_priv {
 	struct clk *clk;
 	struct clk *clk_parent;
 
-	u8 current_key_size;
+	u32 current_key_size;
 	bool sbk_available;
 };
 
@@ -137,13 +139,13 @@ static int tegra_aes_wait_for_idle_dma(struct tegra_aes_priv *priv, bool dma_wai
 	while (tegra_aes_is_busy(priv, dma_wait)) {
 		if (get_timer(start) > TEGRA_AES_BUSY_TIMEOUT_MS) {
 			log_err("%s: TIMEOUT!!!\n", __func__);
-			break;
+			return -ETIMEDOUT;
 		}
 		mdelay(5);
 	}
 
 	if (tegra_aes_check_error(priv))
-		return -1;
+		return -EIO;
 
 	return 0;
 }
@@ -156,9 +158,11 @@ static int tegra_aes_wait_for_idle(struct tegra_aes_priv *priv)
 static int tegra_aes_configure(struct tegra_aes_priv *priv)
 {
 	u32 value;
+	int ret;
 
-	if (tegra_aes_wait_for_idle(priv))
-		return -1;
+	ret = tegra_aes_wait_for_idle(priv);
+	if (ret)
+		return ret;
 
 	/* IRAM config */
 	writel(0, priv->regs + TEGRA_AES_IRAM_ACCESS_CFG);
@@ -191,8 +195,12 @@ static int tegra_aes_configure(struct tegra_aes_priv *priv)
 
 static int tegra_aes_select_key_slot(struct tegra_aes_priv *priv, u32 key_size, u8 slot)
 {
-	if (tegra_aes_wait_for_idle(priv))
-		return -1;
+	u32 value;
+	int ret;
+
+	ret = tegra_aes_wait_for_idle(priv);
+	if (ret)
+		return ret;
 
 	if (key_size < (AES128_KEY_LENGTH * 8) ||
 	    key_size > (TEGRA_AES_HW_MAX_KEY_LENGTH * 8))
@@ -201,7 +209,7 @@ static int tegra_aes_select_key_slot(struct tegra_aes_priv *priv, u32 key_size, 
 	priv->current_key_size = key_size;
 
 	/* Select the key slot */
-	u32 value = readl(priv->regs + TEGRA_AES_SECURE_CONFIG);
+	value = readl(priv->regs + TEGRA_AES_SECURE_CONFIG);
 
 	value &= ~TEGRA_AES_SECURE_KEY_INDEX_FIELD;
 	value |= (slot << TEGRA_AES_SECURE_KEY_INDEX_SHIFT);
@@ -216,6 +224,7 @@ static int tegra_aes_call_engine(struct tegra_aes_priv *priv, u8 *src, u8 *dst,
 	u32 value;
 	const u32 ICMDQ_LENGTH = 4;
 	u32 cmdq[ICMDQ_LENGTH];
+	int ret;
 
 	log_debug("%s: 0x%p -> 0x%p blocks %d mode 0x%x\n", __func__,
 		  src, dst, nblocks, mode);
@@ -225,8 +234,9 @@ static int tegra_aes_call_engine(struct tegra_aes_priv *priv, u8 *src, u8 *dst,
 		return -1;
 	}
 
-	if (tegra_aes_configure(priv))
-		return -1;
+	ret = tegra_aes_configure(priv);
+	if (ret)
+		return ret;
 
 	/* Configure Secure Input */
 	value = 1 << TEGRA_AES_SECURE_INPUT_ALG_SEL_SHIFT |
@@ -265,12 +275,15 @@ static int tegra_aes_call_engine(struct tegra_aes_priv *priv, u8 *src, u8 *dst,
 	cmdq[3] = TEGRA_AES_CMD_DMACOMPLETE << TEGRA_AES_CMDQ_OPCODE_SHIFT;
 
 	for (int i = 0; i < ICMDQ_LENGTH; i++) {
-		tegra_aes_wait_for_idle_dma(priv, (ICMDQ_LENGTH - 1) == i);
+		ret = tegra_aes_wait_for_idle_dma(priv, (ICMDQ_LENGTH - 1) == i);
+		if (ret)
+			return ret;
 		writel(cmdq[i], priv->regs + TEGRA_AES_ICMDQUE_WR);
 	}
 
-	if (tegra_aes_wait_for_idle(priv))
-		return -1;
+	ret = tegra_aes_wait_for_idle(priv);
+	if (ret)
+		return ret;
 
 	/* Put the result from IRAM to destination if not hashing */
 	if (dst != priv->iram_addr && !(mode & TEGRA_AES_MODE_HASH))
@@ -283,6 +296,7 @@ static int tegra_aes_process_blocks(struct udevice *dev, u8 *iv, u8 *src,
 				    u8 *dst, u32 num_aes_blocks, u32 mode)
 {
 	struct tegra_aes_priv *priv = dev_get_priv(dev);
+	int ret;
 
 	log_debug("%s: 0x%p -> 0x%p blocks %d mode 0x%x\n",
 		  __func__, src, dst, num_aes_blocks, mode);
@@ -294,8 +308,10 @@ static int tegra_aes_process_blocks(struct udevice *dev, u8 *iv, u8 *src,
 
 	/* Load initial IV if CBC mode */
 	if (mode & TEGRA_AES_MODE_CBC) {
-		if (tegra_aes_call_engine(priv, iv, priv->iram_addr, 1, TEGRA_AES_MODE_CBC))
-			return -1;
+		ret = tegra_aes_call_engine(priv, iv, priv->iram_addr, 1,
+					    TEGRA_AES_MODE_CBC);
+		if (ret)
+			return ret;
 
 		/* Add update IV flag */
 		mode |= TEGRA_AES_MODE_UPDATE_IV;
@@ -305,8 +321,9 @@ static int tegra_aes_process_blocks(struct udevice *dev, u8 *iv, u8 *src,
 	while (num_aes_blocks > 0) {
 		u32 blocks = min(num_aes_blocks, (u32)TEGRA_AES_DMA_BUFFER_SIZE);
 
-		if (tegra_aes_call_engine(priv, src, dst, blocks, mode))
-			return -1;
+		ret = tegra_aes_call_engine(priv, src, dst, blocks, mode);
+		if (ret)
+			return ret;
 
 		num_aes_blocks -= blocks;
 		src += blocks * AES_BLOCK_LENGTH;
@@ -343,11 +360,13 @@ static int tegra_aes_ops_set_key_for_key_slot(struct udevice *dev, u32 key_size,
 	const u8 CMDQ_KEYTABLEID_SHIFT = 17;
 	const u8 CMDQ_TABLESEL_SHIFT = 24;
 	u32 value, addr;
+	int ret;
 
 	log_debug("%s: slot %d\n", __func__, slot);
 
-	if (tegra_aes_configure(priv))
-		return -1;
+	ret = tegra_aes_configure(priv);
+	if (ret)
+		return ret;
 
 	if (key_size < (AES128_KEY_LENGTH * 8) ||
 	    key_size > (TEGRA_AES_HW_MAX_KEY_LENGTH * 8))
@@ -400,7 +419,7 @@ static int tegra_aes_ops_aes_cbc_decrypt(struct udevice *dev, u8 *iv, u8 *src,
 					TEGRA_AES_MODE_CBC);
 }
 
-static void tegra_aes_test_loaded_sbk(struct udevice *dev)
+static int tegra_aes_test_loaded_sbk(struct udevice *dev)
 {
 	struct tegra_aes_priv *priv = dev_get_priv(dev);
 	enum fuse_operating_mode opmode = tegra_fuse_get_operation_mode();
@@ -408,15 +427,23 @@ static void tegra_aes_test_loaded_sbk(struct udevice *dev)
 		0x66, 0xe9, 0x4b, 0xd4, 0xef, 0x8a, 0x2c, 0x3b,
 		0x88, 0x4c, 0xfa, 0x59, 0xca, 0x34, 0x2b, 0x2e
 	};
+	int ret;
 
 	/* Encrypt a zero block, we use ECB so that we only care about SBK and not the IV */
+	ret = tegra_aes_select_key_slot(priv, 128, TEGRA_AES_SLOT_SBK);
+	if (ret)
+		return ret;
+
 	memset(priv->iram_addr, 0, AES_BLOCK_LENGTH);
-	tegra_aes_select_key_slot(priv, 128, TEGRA_AES_SLOT_SBK);
-	tegra_aes_call_engine(priv, priv->iram_addr, priv->iram_addr, 1, TEGRA_AES_MODE_ENCRYPT);
+	ret = tegra_aes_call_engine(priv, priv->iram_addr, priv->iram_addr, 1,
+				    TEGRA_AES_MODE_ENCRYPT);
+	if (ret)
+		return ret;
 
 	/* Evaluate the result of engine operation */
 	if (!memcmp(priv->iram_addr, AES_ZERO_BLOCK, AES_BLOCK_LENGTH)) {
 		log_err("%s: engine is not operational! (opmode 0x%x)\n", __func__, opmode);
+		return -EIO;
 	} else if (!memcmp(priv->iram_addr, ZERO_KEY_CIPHERTEXT, AES_BLOCK_LENGTH)) {
 		if (opmode == MODE_ODM_PRODUCTION_SECURE) {
 			log_warning("%s: SBK is zero or is cleared from engine! (opmode 0x%x)\n",
@@ -435,6 +462,8 @@ static void tegra_aes_test_loaded_sbk(struct udevice *dev)
 				    __func__, opmode);
 		}
 	}
+
+	return 0;
 }
 
 static int tegra_aes_hw_init(struct udevice *dev)
@@ -498,9 +527,7 @@ static int tegra_aes_hw_init(struct udevice *dev)
 
 	/* Check if SBK is loaded in SBK slot or was erased */
 	priv->sbk_available = false;
-	tegra_aes_test_loaded_sbk(dev);
-
-	return 0;
+	return tegra_aes_test_loaded_sbk(dev);
 }
 
 static int tegra_aes_probe(struct udevice *dev)
@@ -510,7 +537,7 @@ static int tegra_aes_probe(struct udevice *dev)
 	u32 value;
 	int ret;
 
-	priv->current_key_size = AES128_KEY_LENGTH;
+	priv->current_key_size = AES128_KEY_LENGTH * 8;
 
 	priv->regs = dev_read_addr_ptr(dev);
 	if (!priv->regs) {
@@ -547,18 +574,26 @@ static int tegra_aes_probe(struct udevice *dev)
 
 	priv->clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(priv->clk)) {
+		ret = PTR_ERR(priv->clk);
 		log_err("%s: failed to get BSE clock: %d\n", __func__, ret);
 		return ret;
 	}
 
-	/* VDE clock and reset required by BSEV */
-	ret = reset_get_by_name(dev, "vde", &priv->reset_ctl_vde);
-	if (ret)
-		log_debug("%s: failed to get VDE reset: %d\n", __func__, ret);
+	/* Only BSEV requires the VDE clock and reset. */
+	if (dev_get_driver_data(dev) & TEGRA_AES_BSEV) {
+		ret = reset_get_by_name(dev, "vde", &priv->reset_ctl_vde);
+		if (ret) {
+			log_debug("%s: failed to get VDE reset: %d\n", __func__, ret);
+			return ret;
+		}
 
-	priv->clk_parent = devm_clk_get(dev, "vde");
-	if (IS_ERR(priv->clk_parent))
-		log_debug("%s: failed to get BSE clock: %d\n", __func__, ret);
+		priv->clk_parent = devm_clk_get(dev, "vde");
+		if (IS_ERR(priv->clk_parent)) {
+			ret = PTR_ERR(priv->clk_parent);
+			log_err("%s: failed to get VDE clock: %d\n", __func__, ret);
+			return ret;
+		}
+	}
 
 	return tegra_aes_hw_init(dev);
 }
@@ -575,9 +610,9 @@ static const struct aes_ops tegra_aes_ops = {
 
 static const struct udevice_id tegra_aes_ids[] = {
 	{ .compatible = "nvidia,tegra20-bsea" },
-	{ .compatible = "nvidia,tegra20-bsev" },
+	{ .compatible = "nvidia,tegra20-bsev", .data = TEGRA_AES_BSEV },
 	{ .compatible = "nvidia,tegra30-bsea" },
-	{ .compatible = "nvidia,tegra30-bsev" },
+	{ .compatible = "nvidia,tegra30-bsev", .data = TEGRA_AES_BSEV },
 	{ }
 };
 
