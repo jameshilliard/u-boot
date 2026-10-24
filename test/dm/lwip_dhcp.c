@@ -26,7 +26,8 @@ struct dhcp_handoff_test {
 	unsigned int discovers;
 	unsigned int drop_acquisitions;
 	unsigned int tftp_failures;
-	unsigned int arp_replies;
+	unsigned int rx_packets;
+	int rx_error;
 	unsigned int tftp;
 	unsigned int nfs;
 	u32 boot_server;
@@ -125,30 +126,8 @@ static int dhcp_handoff_tx(struct udevice *dev, void *packet, unsigned int len)
 	u8 *data;
 
 	if (test->rx_burst && netif_dhcp_data(netif_default) &&
-	    ntohs(eth->et_protlen) == PROT_ARP) {
-		struct etharp_hdr *arp = (void *)(eth + 1);
-		int ret;
-
-		/*
-		 * Binding sends a gratuitous ARP. Keep the receive queue busy by
-		 * answering each subsequent ARP reply with another request, so a
-		 * poll exhausts its packet budget and returns a positive length.
-		 */
-		if (ntohs(arp->opcode) == ARP_REPLY)
-			test->arp_replies++;
-		if (test->arp_replies >= ETH_PACKETS_BATCH_RECV)
-			return 0;
-		priv->fake_host_ipaddr.s_addr = htonl(0x01010202);
-		ret = sandbox_eth_recv_arp_req(dev);
-		if (ret)
-			return ret;
-		arp = (void *)(priv->recv_packet_buffer[priv->recv_packets - 1] +
-			      ETHER_HDR_SIZE);
-		/* The lease has not been published to net_ip yet. */
-		memcpy(&arp->dipaddr, netif_ip4_addr(netif_default),
-		       sizeof(arp->dipaddr));
+	    ntohs(eth->et_protlen) == PROT_ARP)
 		return 0;
-	}
 	if (!sandbox_eth_arp_req_to_reply(dev, packet, len))
 		return 0;
 	if (len < ETHER_HDR_SIZE + IP_UDP_HDR_SIZE ||
@@ -211,6 +190,31 @@ static int dhcp_handoff_tx(struct udevice *dev, void *packet, unsigned int len)
 		ETHER_HDR_SIZE + IP_UDP_HDR_SIZE + 6;
 
 	return 0;
+}
+
+static void dhcp_handoff_free_pkt(struct udevice *dev, int len)
+{
+	struct eth_sandbox_priv *priv = dev_get_priv(dev);
+	struct dhcp_handoff_test *test = priv->priv;
+	struct etharp_hdr *arp;
+	int ret;
+
+	if (!test->rx_burst || len <= 0)
+		return;
+	test->rx_packets++;
+	if (test->rx_packets >= ETH_PACKETS_BATCH_RECV ||
+	    !dhcp_supplied_address(netif_default))
+		return;
+	priv->fake_host_ipaddr.s_addr = htonl(0x01010202);
+	ret = sandbox_eth_recv_arp_req(dev);
+	if (ret) {
+		test->rx_error = ret;
+		return;
+	}
+	arp = (void *)(priv->recv_packet_buffer[priv->recv_packets - 1] +
+		       ETHER_HDR_SIZE);
+	memcpy(&arp->dipaddr, netif_ip4_addr(netif_default),
+	       sizeof(arp->dipaddr));
 }
 
 static int dhcp_autoload_retries(struct unit_test_state *uts,
@@ -311,12 +315,8 @@ static int dhcp_handoff_check(struct unit_test_state *uts,
 	};
 	ut_assertok(env_set("autoload", "no"));
 	ut_assertok(do_dhcp(NULL, 0, 1, argv));
-	/*
-	 * OFFER and ACK occupy two slots; without a proxy wait DHCP can stop
-	 * after the first full batch, leaving the final ARP requests queued.
-	 */
-	ut_assert(test->arp_replies >= ETH_PACKETS_BATCH_RECV - 2);
-	ut_assert(test->arp_replies <= ETH_PACKETS_BATCH_RECV);
+	ut_asserteq(0, test->rx_error);
+	ut_asserteq(ETH_PACKETS_BATCH_RECV, test->rx_packets);
 	ut_asserteq_str("1.1.2.3", env_get("ipaddr"));
 	ut_asserteq(0, test->tftp);
 	ut_asserteq(0, test->nfs);
@@ -423,11 +423,13 @@ static int dm_test_lwip_dhcp_handoff(struct unit_test_state *uts)
 	}
 	memcpy(bootfile, net_boot_file_name, sizeof(bootfile));
 	sandbox_eth_set_tx_handler(0, dhcp_handoff_tx);
+	sandbox_eth_set_free_pkt_handler(0, dhcp_handoff_free_pkt);
 	sandbox_eth_set_priv(0, &test);
 	sandbox_eth_set_tx_handler(1, dhcp_handoff_tx);
 	sandbox_eth_set_priv(1, &test);
 	ret = dhcp_handoff_check(uts, &test);
 	sandbox_eth_set_tx_handler(0, NULL);
+	sandbox_eth_set_free_pkt_handler(0, NULL);
 	sandbox_eth_set_priv(0, NULL);
 	sandbox_eth_set_tx_handler(1, NULL);
 	sandbox_eth_set_priv(1, NULL);

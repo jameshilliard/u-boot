@@ -72,6 +72,14 @@ typedef int sandbox_eth_tx_hand_f(struct udevice *dev, void *pkt,
 				   unsigned int len);
 
 /**
+ * A packet release handler
+ *
+ * dev - device pointer
+ * len - length of the released packet
+ */
+typedef void sandbox_eth_free_pkt_hand_f(struct udevice *dev, int len);
+
+/**
  * struct eth_sandbox_priv - memory for sandbox mock driver
  *
  * fake_host_hwaddr - MAC address of mocked machine
@@ -86,6 +94,7 @@ typedef int sandbox_eth_tx_hand_f(struct udevice *dev, void *pkt,
  * stop_count - number of calls to the driver's stop operation
  * restart_wrap - inject an Ethernet rotation wrap on start
  * tx_handler - function to generate responses to sent packets
+ * free_pkt_handler - function called after releasing a received packet
  * priv - a pointer to some structure a test may want to keep track of
  */
 struct eth_sandbox_priv {
@@ -101,6 +110,7 @@ struct eth_sandbox_priv {
 	unsigned int stop_count;
 	bool restart_wrap;
 	sandbox_eth_tx_hand_f *tx_handler;
+	sandbox_eth_free_pkt_hand_f *free_pkt_handler;
 	void *priv;
 };
 
@@ -110,6 +120,14 @@ struct eth_sandbox_priv {
  * handler - The func ptr to call on send. If NULL, set to default handler
  */
 void sandbox_eth_set_tx_handler(int index, sandbox_eth_tx_hand_f *handler);
+
+/*
+ * Set packet release handler
+ *
+ * handler - function to call after releasing a received packet
+ */
+void sandbox_eth_set_free_pkt_handler(int index,
+				      sandbox_eth_free_pkt_hand_f *handler);
 
 /*
  * Set priv ptr
