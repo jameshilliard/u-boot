@@ -8,7 +8,7 @@
 
 struct udevice;
 
-#if CONFIG_IS_ENABLED(XPOWERS_AC200)
+#if IS_ENABLED(CONFIG_XPOWERS_AC200)
 int ac200_read(struct udevice *dev, unsigned int reg, u16 *value);
 int ac200_write(struct udevice *dev, unsigned int reg, u16 value);
 int ac200_update_bits(struct udevice *dev, unsigned int reg, u16 mask,

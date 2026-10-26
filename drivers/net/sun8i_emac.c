@@ -631,9 +631,11 @@ static int sun8i_mdio_reset(struct mii_dev *bus)
 	return 0;
 }
 
-static int sun8i_mdio_init(const char *name, struct udevice *priv)
+static int sun8i_mdio_init(struct udevice *dev)
 {
+	struct emac_eth_dev *priv = dev_get_priv(dev);
 	struct mii_dev *bus = mdio_alloc();
+	int ret;
 
 	if (!bus) {
 		debug("Failed to allocate MDIO bus\n");
@@ -642,11 +644,18 @@ static int sun8i_mdio_init(const char *name, struct udevice *priv)
 
 	bus->read = sun8i_mdio_read;
 	bus->write = sun8i_mdio_write;
-	snprintf(bus->name, sizeof(bus->name), name);
-	bus->priv = (void *)priv;
+	snprintf(bus->name, sizeof(bus->name), "%s", dev->name);
+	bus->priv = dev;
 	bus->reset = sun8i_mdio_reset;
 
-	return  mdio_register(bus);
+	ret = mdio_register(bus);
+	if (ret) {
+		mdio_free(bus);
+		return ret;
+	}
+	priv->bus = bus;
+
+	return 0;
 }
 
 static int sun8i_eth_free_pkt(struct udevice *dev, uchar *packet,
@@ -703,15 +712,20 @@ static int sun8i_emac_eth_probe(struct udevice *dev)
 	if (priv->phy_reg)
 		regulator_set_enable(priv->phy_reg, true);
 
-	ret = sun8i_mdio_init(dev->name, dev);
+	ret = sun8i_mdio_init(dev);
 	if (ret)
 		return ret;
 
-	priv->bus = miiphy_get_dev_by_name(dev->name);
-	if (!priv->bus)
-		return -ENODEV;
+	ret = sun8i_phy_init(priv, dev);
+	if (ret) {
+		free(priv->phydev);
+		priv->phydev = NULL;
+		mdio_unregister(priv->bus);
+		mdio_free(priv->bus);
+		priv->bus = NULL;
+	}
 
-	return sun8i_phy_init(priv, dev);
+	return ret;
 }
 
 static const struct eth_ops sun8i_emac_eth_ops = {
