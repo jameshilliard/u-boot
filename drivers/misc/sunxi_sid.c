@@ -26,8 +26,8 @@ static int sunxi_sid_read(struct udevice *dev, int offset, void *buf, int size)
 	u8 *out = buf;
 	int i;
 
-	if (offset < 0 || !buf || size < 0 ||
-	    offset + size > priv->data->size)
+	if (offset < 0 || !buf || size < 0 || offset > priv->data->size ||
+	    size > priv->data->size - offset)
 		return -EINVAL;
 
 	for (i = 0; i < size; i++) {

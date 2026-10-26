@@ -733,7 +733,7 @@ config SL28CPLD
 
 config XPOWERS_AC200
 	bool "X-Powers AC200 register provider"
-	depends on DM_I2C
+	depends on DM_I2C && CLK
 	depends on MISC
 	help
 	  Enable the I2C register provider for the X-Powers AC200 mixed-signal

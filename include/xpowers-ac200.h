@@ -15,20 +15,12 @@ int ac200_update_bits(struct udevice *dev, unsigned int reg, u16 mask,
 		      u16 value);
 ulong ac200_get_clock_rate(struct udevice *dev);
 #else
-static inline int ac200_read(struct udevice *dev, unsigned int reg,
-			     u16 *value)
+static inline int ac200_read(struct udevice *dev, unsigned int reg, u16 *value)
 {
 	return -ENOSYS;
 }
 
-static inline int ac200_write(struct udevice *dev, unsigned int reg,
-			      u16 value)
-{
-	return -ENOSYS;
-}
-
-static inline int ac200_update_bits(struct udevice *dev, unsigned int reg,
-				    u16 mask, u16 value)
+static inline int ac200_write(struct udevice *dev, unsigned int reg, u16 value)
 {
 	return -ENOSYS;
 }

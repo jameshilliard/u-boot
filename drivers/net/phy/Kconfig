@@ -352,10 +352,9 @@ config PHY_XILINX
 
 config PHY_XPOWERS_ACX00
 	bool "X-Powers AC200/AC300 Ethernet PHY support"
-	depends on PHY_ETHERNET_ID
+	depends on PHY_ETHERNET_ID && CLK
 	depends on DM_REGULATOR
 	depends on MISC
-	depends on OF_LIVE
 	imply XPOWERS_AC200
 	select NVMEM
 	help

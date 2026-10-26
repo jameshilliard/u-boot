@@ -1891,7 +1891,8 @@ X-POWERS AC200/AC300 ETHERNET PHY
 M:	James Hilliard <james.hilliard1@gmail.com>
 S:	Maintained
 F:	drivers/misc/xpowers-ac200.c
-F:	drivers/net/phy/xpowers-acx00.c
+F:	drivers/net/phy/xpowers/
+F:	board/sunxi/acx00.c
 F:	include/xpowers-ac200.h
 F:	include/xpowers-acx00.h
 
