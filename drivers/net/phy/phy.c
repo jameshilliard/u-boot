@@ -742,23 +742,21 @@ int phy_reset(struct phy_device *phydev)
 	 * auto-clearing).  This should happen within 0.5 seconds per the
 	 * IEEE spec.
 	 */
-	reg = phy_read(phydev, devad, MII_BMCR);
-	while ((reg & BMCR_RESET) && timeout--) {
+	do {
 		reg = phy_read(phydev, devad, MII_BMCR);
 
 		if (reg < 0) {
 			debug("PHY status read failed\n");
-			return -1;
+			return reg;
 		}
+		if (!(reg & BMCR_RESET))
+			return 0;
+
 		udelay(1000);
-	}
+	} while (--timeout);
 
-	if (reg & BMCR_RESET) {
-		puts("PHY reset timed out\n");
-		return -1;
-	}
-
-	return 0;
+	puts("PHY reset timed out\n");
+	return -1;
 }
 
 int miiphy_reset(const char *devname, unsigned char addr)
