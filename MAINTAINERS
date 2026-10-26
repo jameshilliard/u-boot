@@ -1918,10 +1918,11 @@ F:	include/xen.h
 F:	lib/sscanf.c
 F:	test/lib/sscanf.c
 
-X-POWERS AC200
+X-POWERS AC200/AC300
 M:	James Hilliard <james.hilliard1@gmail.com>
 S:	Maintained
 F:	drivers/misc/xpowers-ac200.c
+F:	drivers/net/phy/xpowers/
 F:	include/xpowers-ac200.h
 
 XTENSA

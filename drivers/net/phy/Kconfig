@@ -358,6 +358,16 @@ config PHY_VITESSE
 config PHY_XILINX
 	bool "Xilinx Ethernet PHYs support"
 
+config PHY_XPOWERS_ACX00
+	bool "X-Powers AC200/AC300 Ethernet PHY support"
+	depends on PHY_ETHERNET_ID && CLK && DM_REGULATOR && MISC
+	select NVMEM
+	imply XPOWERS_AC200
+	help
+	  Support the Fast Ethernet PHY in AC200 and AC300 companion ICs.
+	  The Linux Ethernet PHY package binding describes the supply, clock
+	  and calibration. AC200 also needs the I2C register provider.
+
 config PHY_XILINX_GMII2RGMII
 	bool "Xilinx GMII to RGMII Ethernet PHYs support"
 	help
