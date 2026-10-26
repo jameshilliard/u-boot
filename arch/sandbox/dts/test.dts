@@ -91,6 +91,103 @@
 	binman: binman {
 	};
 
+	acx00_clk: acx00-clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+	};
+
+	acx00_clk25: acx00-clock25 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+	};
+
+	acx00_clk27: acx00-clock27 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <27000000>;
+	};
+
+	acx00_clk26: acx00-clock26 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <26000000>;
+	};
+
+	acx00_vcc: acx00-supply {
+		compatible = "regulator-fixed";
+		regulator-name = "acx00-vcc";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+
+	acx00-nvmem {
+		compatible = "sandbox,acx00-nvmem";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		acx00_config: configuration@0 {
+			reg = <0 2>;
+		};
+		acx00_short_config: configuration@2 {
+			reg = <2 1>;
+		};
+	};
+
+	acx00-test {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clocks = <&acx00_clk>, <&acx00_clk25>, <&acx00_clk27>, <&acx00_clk26>;
+		package {
+			compatible = "x-powers,acx00-ephy-package";
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clocks = <&acx00_clk>;
+			vcc-supply = <&acx00_vcc>;
+			nvmem-cells = <&acx00_config>;
+			nvmem-cell-names = "configuration";
+			x-powers,ac200 = <&ac200_test>;
+			x-powers,xmii-rx-clock-inverted;
+			ethernet-phy@0 {
+				compatible = "ethernet-phy-id0044.1400";
+				reg = <0>;
+			};
+		};
+		short-cell {
+			compatible = "x-powers,ac300-ephy-package";
+			reg = <0>;
+			nvmem-cells = <&acx00_short_config>;
+			nvmem-cell-names = "configuration";
+			ethernet-phy { };
+		};
+		missing-clock {
+			compatible = "x-powers,ac300-ephy-package";
+			reg = <0>;
+			vcc-supply = <&acx00_vcc>;
+			nvmem-cells = <&acx00_config>;
+			nvmem-cell-names = "configuration";
+			ethernet-phy { };
+		};
+		fixed-ac200 {
+			compatible = "x-powers,ac200-ephy-package";
+			reg = <0>;
+			vcc-supply = <&acx00_vcc>;
+			x-powers,ac200 = <&ac200_test>;
+			ethernet-phy { };
+		};
+		fixed-ac300 {
+			compatible = "x-powers,ac300-ephy-package";
+			reg = <0>;
+			clocks = <&acx00_clk>;
+			vcc-supply = <&acx00_vcc>;
+			nvmem-cells = <&acx00_config>;
+			nvmem-cell-names = "configuration";
+			ethernet-phy { };
+		};
+	};
+
 	config {
 		testing-bool;
 		testing-int = <123>;
@@ -1028,9 +1125,19 @@
 			sandbox,emul = <&emul1>;
 		};
 
+		ac200_test: ac200@10 {
+			compatible = "x-powers,ac200";
+			reg = <0x10>;
+			clocks = <&acx00_clk>;
+			sandbox,emul = <&ac200_emul>;
+		};
+
 		i2c_emul: emul@7f {
 			reg = <0x7f>;
 			compatible = "sandbox,i2c-emul-parent";
+			ac200_emul: ac200-emul {
+				compatible = "sandbox,ac200-emul";
+			};
 			emul_eeprom: emul-eeprom {
 				compatible = "sandbox,i2c-eeprom";
 				sandbox,filename = "i2c.bin";
