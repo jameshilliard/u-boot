@@ -103,7 +103,7 @@ static int acx00_ephy_read_configuration(ofnode package, u16 *configuration,
 	int ret;
 
 	*present = ofnode_stringlist_search(package, "nvmem-cell-names",
-					   "configuration") >= 0;
+					    "configuration") >= 0;
 	if (!*present) {
 		*configuration = 0;
 		return 0;

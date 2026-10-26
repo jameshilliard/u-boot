@@ -237,6 +237,7 @@ static int dm_test_acx00_ac300(struct unit_test_state *uts)
 	}
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_ac300, UTF_SCAN_FDT);
 
 static int dm_test_acx00_clocks(struct unit_test_state *uts)
@@ -275,6 +276,7 @@ static int dm_test_acx00_clocks(struct unit_test_state *uts)
 	ut_assertok(ofnode_write_u32(package, "clocks", phandle));
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_clocks, UTF_SCAN_FDT);
 
 static int dm_test_acx00_address(struct unit_test_state *uts)
@@ -300,6 +302,7 @@ static int dm_test_acx00_address(struct unit_test_state *uts)
 	acx00_test_free(phy);
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_address, UTF_SCAN_FDT);
 
 static int dm_test_acx00_invalid(struct unit_test_state *uts)
@@ -343,6 +346,7 @@ static int dm_test_acx00_invalid(struct unit_test_state *uts)
 	acx00_test_free(phy);
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_invalid, UTF_SCAN_FDT);
 
 static int dm_test_acx00_mdio_errors(struct unit_test_state *uts)
@@ -380,6 +384,7 @@ static int dm_test_acx00_mdio_errors(struct unit_test_state *uts)
 	}
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_mdio_errors, UTF_SCAN_FDT);
 
 static int dm_test_acx00_ac200(struct unit_test_state *uts)
@@ -428,6 +433,7 @@ static int dm_test_acx00_ac200(struct unit_test_state *uts)
 	ut_asserteq(-EIO, ac200_read(control, 0x6000, &value));
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_ac200, UTF_SCAN_FDT);
 
 static int dm_test_acx00_i2c_errors(struct unit_test_state *uts)
@@ -464,4 +470,5 @@ static int dm_test_acx00_i2c_errors(struct unit_test_state *uts)
 	}
 	return 0;
 }
+
 DM_TEST(dm_test_acx00_i2c_errors, UTF_SCAN_FDT);

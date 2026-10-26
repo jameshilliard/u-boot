@@ -1895,6 +1895,7 @@ F:	drivers/net/phy/xpowers/
 F:	board/sunxi/acx00.c
 F:	include/xpowers-ac200.h
 F:	include/xpowers-acx00.h
+F:	test/dm/xpowers_phy.c
 
 XTENSA
 M:	Max Filippov <jcmvbkbc@gmail.com>
